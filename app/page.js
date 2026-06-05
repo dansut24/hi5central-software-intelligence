@@ -1,21 +1,17 @@
-async function getStatus() {
+async function getJson(path) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  const res = await fetch(`${baseUrl}/api/sources/status`, {
+  const res = await fetch(`${baseUrl}${path}`, {
     cache: "no-store",
   });
 
-  if (!res.ok) return { ok: false, apps: [] };
+  if (!res.ok) return null;
 
   return res.json();
 }
 
 function latestVersion(app) {
   return app.software_versions?.[0]?.version || "Not checked";
-}
-
-function latestReleaseUrl(app) {
-  return app.software_versions?.[0]?.release_url || app.homepage_url;
 }
 
 function latestRun(app) {
@@ -26,9 +22,18 @@ function latestSource(app) {
   return app.software_sources?.[0] || null;
 }
 
+function findInstaller(app, installers) {
+  return installers.find(
+    (item) => item.software_catalogue?.winget_id === app.winget_id
+  );
+}
+
 export default async function HomePage() {
-  const data = await getStatus();
-  const apps = data.apps || [];
+  const statusData = await getJson("/api/sources/status");
+  const installerData = await getJson("/api/installers/status");
+
+  const apps = statusData?.apps || [];
+  const installers = installerData?.installers || [];
 
   const sortedApps = [...apps].sort((a, b) => {
     const aStatus = latestRun(a)?.status || "pending";
@@ -40,10 +45,19 @@ export default async function HomePage() {
     return a.name.localeCompare(b.name);
   });
 
-  const checked = apps.filter((app) => latestVersion(app) !== "Not checked").length;
-  const failed = apps.filter((app) => latestRun(app)?.status === "failed").length;
   const success = apps.filter((app) => latestRun(app)?.status === "success").length;
+  const failed = apps.filter((app) => latestRun(app)?.status === "failed").length;
   const pending = apps.length - success - failed;
+
+  const installerCount = installers.length;
+  const directInstallerCount = installers.filter((installer) => {
+    const url = installer.download_url || "";
+    return (
+      url.includes(".msi") ||
+      url.includes(".exe") ||
+      installer.download_resolver === "github_asset"
+    );
+  }).length;
 
   return (
     <main style={styles.page}>
@@ -52,7 +66,7 @@ export default async function HomePage() {
           <p style={styles.eyebrow}>Hi5Central</p>
           <h1 style={styles.title}>Software Intelligence</h1>
           <p style={styles.subtitle}>
-            Vendor-direct Tier 1 release tracking for managed software.
+            Vendor-direct release and installer tracking for managed software.
           </p>
         </div>
 
@@ -60,8 +74,17 @@ export default async function HomePage() {
           <a style={styles.button} href="/api/sources/seed">
             Seed sources
           </a>
+          <a style={styles.button} href="/api/installers/seed">
+            Seed installers
+          </a>
           <a style={styles.buttonPrimary} href="/api/sources/check?limit=25">
-            Check 25 versions
+            Check versions
+          </a>
+          <a
+            style={styles.buttonDark}
+            href="/api/installers/validate-downloads?limit=10"
+          >
+            Validate installers
           </a>
         </div>
       </section>
@@ -73,27 +96,26 @@ export default async function HomePage() {
         </div>
 
         <div style={styles.card}>
-          <span style={styles.cardLabel}>Successful</span>
+          <span style={styles.cardLabel}>Version checks</span>
           <strong style={styles.cardValue}>{success}</strong>
+          <span style={styles.cardHint}>{failed} failed / {pending} pending</span>
         </div>
 
         <div style={styles.card}>
-          <span style={styles.cardLabel}>Failed</span>
-          <strong style={styles.cardValue}>{failed}</strong>
+          <span style={styles.cardLabel}>Installers</span>
+          <strong style={styles.cardValue}>{installerCount}</strong>
         </div>
 
         <div style={styles.card}>
-          <span style={styles.cardLabel}>Pending</span>
-          <strong style={styles.cardValue}>{pending}</strong>
+          <span style={styles.cardLabel}>Likely direct</span>
+          <strong style={styles.cardValue}>{directInstallerCount}</strong>
         </div>
       </section>
 
       {failed > 0 && (
         <section style={styles.warning}>
           <strong>{failed} source checks need attention.</strong>
-          <span>
-            Failed rows are shown first so source patterns can be corrected quickly.
-          </span>
+          <span>Failed rows are shown first.</span>
         </section>
       )}
 
@@ -102,7 +124,7 @@ export default async function HomePage() {
           <div>
             <h2 style={styles.panelTitle}>Tracked applications</h2>
             <span style={styles.muted}>
-              {success}/{apps.length} successful latest-version checks
+              {success}/{apps.length} version checks successful · {installerCount} installers seeded
             </span>
           </div>
         </div>
@@ -113,9 +135,10 @@ export default async function HomePage() {
               <tr>
                 <th style={styles.th}>App</th>
                 <th style={styles.th}>Latest</th>
-                <th style={styles.th}>Source</th>
+                <th style={styles.th}>Version source</th>
+                <th style={styles.th}>Installer</th>
+                <th style={styles.th}>Silent args</th>
                 <th style={styles.th}>Status</th>
-                <th style={styles.th}>Last checked</th>
                 <th style={styles.th}>Actions</th>
               </tr>
             </thead>
@@ -124,14 +147,16 @@ export default async function HomePage() {
               {sortedApps.map((app) => {
                 const source = latestSource(app);
                 const run = latestRun(app);
-                const version = latestVersion(app);
-                const releaseUrl = latestReleaseUrl(app);
-                const downloadUrl =
-                  source?.metadata?.downloadUrl ||
-                  source?.metadata?.download_url ||
-                  app.homepage_url;
-
+                const installer = findInstaller(app, installers);
                 const status = run?.status || "pending";
+
+                const releaseUrl =
+                  app.software_versions?.[0]?.release_url || app.homepage_url;
+
+                const downloadUrl =
+                  installer?.download_url ||
+                  source?.metadata?.downloadUrl ||
+                  app.homepage_url;
 
                 return (
                   <tr key={app.id}>
@@ -142,12 +167,35 @@ export default async function HomePage() {
                     </td>
 
                     <td style={styles.td}>
-                      <code style={styles.code}>{version}</code>
+                      <code style={styles.code}>{latestVersion(app)}</code>
                     </td>
 
                     <td style={styles.td}>
-                      <span style={styles.badge}>{source?.source_type}</span>
+                      <span style={styles.badge}>{source?.source_type || "none"}</span>
                       <div style={styles.small}>{source?.source_name}</div>
+                    </td>
+
+                    <td style={styles.td}>
+                      {installer ? (
+                        <>
+                          <span style={styles.badgeDark}>
+                            {installer.installer_type} · {installer.architecture}
+                          </span>
+                          <div style={styles.small}>
+                            {installer.download_resolver || "direct_url"}
+                          </div>
+                        </>
+                      ) : (
+                        <span style={styles.statusPending}>No installer</span>
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {installer?.silent_install_args ? (
+                        <code style={styles.code}>{installer.silent_install_args}</code>
+                      ) : (
+                        <span style={styles.small}>Not set</span>
+                      )}
                     </td>
 
                     <td style={styles.td}>
@@ -175,14 +223,6 @@ export default async function HomePage() {
                           {run.message}
                         </div>
                       )}
-                    </td>
-
-                    <td style={styles.td}>
-                      <span style={styles.small}>
-                        {run?.checked_at
-                          ? new Date(run.checked_at).toLocaleString("en-GB")
-                          : "Never"}
-                      </span>
                     </td>
 
                     <td style={styles.td}>
@@ -263,6 +303,15 @@ const styles = {
     border: "1px solid #2563eb",
     fontWeight: 700,
   },
+  buttonDark: {
+    padding: "10px 14px",
+    borderRadius: 10,
+    background: "#111827",
+    color: "#ffffff",
+    textDecoration: "none",
+    border: "1px solid #111827",
+    fontWeight: 700,
+  },
   cards: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
@@ -283,6 +332,11 @@ const styles = {
   },
   cardValue: {
     fontSize: 30,
+    display: "block",
+  },
+  cardHint: {
+    color: "#6b7280",
+    fontSize: 12,
   },
   warning: {
     display: "flex",
@@ -354,6 +408,15 @@ const styles = {
     display: "inline-block",
     background: "#eef2ff",
     color: "#3730a3",
+    borderRadius: 999,
+    padding: "3px 8px",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  badgeDark: {
+    display: "inline-block",
+    background: "#111827",
+    color: "#ffffff",
     borderRadius: 999,
     padding: "3px 8px",
     fontSize: 12,
