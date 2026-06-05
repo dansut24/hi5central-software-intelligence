@@ -36,34 +36,32 @@ function contentLooksLikeInstaller(contentType = "") {
 }
 
 async function resolveGithubAsset(metadata) {
-  const owner = metadata?.owner;
-  const repo = metadata?.repo;
-  const assetPattern = metadata?.assetPattern;
-
-  if (!owner || !repo || !assetPattern) {
-    throw new Error("github_asset requires owner, repo and assetPattern");
-  }
-
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
-    cache: "no-store",
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "Hi5Central-Software-Intelligence",
-    },
-  });
+  const res = await fetch(
+    `https://api.github.com/repos/${metadata.owner}/${metadata.repo}/releases/latest`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Hi5Central-Software-Intelligence",
+      },
+    }
+  );
 
   if (!res.ok) {
     throw new Error(`GitHub latest release failed: HTTP ${res.status}`);
   }
 
   const release = await res.json();
-  const regex = wildcardToRegex(assetPattern);
+  const regex = wildcardToRegex(metadata.assetPattern);
 
   const asset = (release.assets || []).find((item) => regex.test(item.name));
 
   if (!asset) {
-    const available = (release.assets || []).map((item) => item.name).join(", ");
-    throw new Error(`No asset matched ${assetPattern}. Available: ${available}`);
+    throw new Error(
+      `No asset matched ${metadata.assetPattern}. Available: ${(release.assets || [])
+        .map((item) => item.name)
+        .join(", ")}`
+    );
   }
 
   return {
@@ -110,25 +108,33 @@ async function validateUrl(url) {
     const contentType = res.headers.get("content-type") || "";
     const contentLength = res.headers.get("content-length") || "";
 
+    const direct =
+      looksLikeInstaller(finalUrl) ||
+      looksLikeInstaller(url) ||
+      contentLooksLikeInstaller(contentType);
+
     return {
       ok: res.ok,
       status: res.status,
       finalUrl,
       contentType,
       contentLength,
-      direct:
-        looksLikeInstaller(finalUrl) ||
-        looksLikeInstaller(url) ||
-        contentLooksLikeInstaller(contentType),
+      direct,
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
+function getValidationStatus(check) {
+  if (check.ok && check.direct) return "ready";
+  if (check.ok && !check.direct) return "needs_resolver";
+  return "broken";
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const limit = Math.min(Number(searchParams.get("limit") || 25), 50);
+  const limit = Math.min(Number(searchParams.get("limit") || 25), 100);
 
   const supabase = supabaseAdmin();
 
@@ -158,8 +164,28 @@ export async function GET(request) {
       const resolved = await resolveDownloadUrl(installer);
       const check = await validateUrl(resolved.url);
 
+      const validationStatus = getValidationStatus(check);
+      const validationMessage =
+        validationStatus === "ready"
+          ? "Installer validated"
+          : validationStatus === "needs_resolver"
+            ? `URL resolved but is not a direct installer: ${check.contentType || "unknown content type"}`
+            : `Download failed with HTTP ${check.status}`;
+
+      await supabase
+        .from("software_installers")
+        .update({
+          validation_status: validationStatus,
+          validation_message: validationMessage,
+          validated_at: new Date().toISOString(),
+          resolved_download_url: check.finalUrl,
+          resolved_content_type: check.contentType,
+          resolved_content_length: check.contentLength,
+        })
+        .eq("id", installer.id);
+
       results.push({
-        status: check.ok && check.direct ? "success" : "failed",
+        status: validationStatus,
         name: installer.software_catalogue?.name,
         winget_id: installer.software_catalogue?.winget_id,
         installer_type: installer.installer_type,
@@ -167,16 +193,25 @@ export async function GET(request) {
         assetName: resolved.assetName,
         downloadUrl: installer.download_url,
         resolvedDownloadUrl: resolved.url,
-        releaseUrl: resolved.releaseUrl,
         finalUrl: check.finalUrl,
         httpStatus: check.status,
         contentType: check.contentType,
         contentLength: check.contentLength,
         direct: check.direct,
+        message: validationMessage,
       });
     } catch (err) {
+      await supabase
+        .from("software_installers")
+        .update({
+          validation_status: "broken",
+          validation_message: err.message,
+          validated_at: new Date().toISOString(),
+        })
+        .eq("id", installer.id);
+
       results.push({
-        status: "failed",
+        status: "broken",
         name: installer.software_catalogue?.name,
         winget_id: installer.software_catalogue?.winget_id,
         installer_type: installer.installer_type,
@@ -191,8 +226,9 @@ export async function GET(request) {
   return NextResponse.json({
     ok: true,
     count: results.length,
-    directCount: results.filter((r) => r.status === "success" && r.direct).length,
-nonDirectCount: results.filter((r) => r.status !== "success" || !r.direct).length,
+    readyCount: results.filter((r) => r.status === "ready").length,
+    needsResolverCount: results.filter((r) => r.status === "needs_resolver").length,
+    brokenCount: results.filter((r) => r.status === "broken").length,
     results,
   });
 }
