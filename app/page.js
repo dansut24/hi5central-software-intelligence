@@ -5,9 +5,7 @@ async function getStatus() {
     cache: "no-store",
   });
 
-  if (!res.ok) {
-    return { ok: false, apps: [] };
-  }
+  if (!res.ok) return { ok: false, apps: [] };
 
   return res.json();
 }
@@ -21,16 +19,31 @@ function latestReleaseUrl(app) {
 }
 
 function latestRun(app) {
-  const runs = app.software_sources?.[0]?.source_check_runs || [];
-  return runs[0] || null;
+  return app.software_sources?.[0]?.source_check_runs?.[0] || null;
+}
+
+function latestSource(app) {
+  return app.software_sources?.[0] || null;
 }
 
 export default async function HomePage() {
   const data = await getStatus();
   const apps = data.apps || [];
 
+  const sortedApps = [...apps].sort((a, b) => {
+    const aStatus = latestRun(a)?.status || "pending";
+    const bStatus = latestRun(b)?.status || "pending";
+
+    if (aStatus === "failed" && bStatus !== "failed") return -1;
+    if (aStatus !== "failed" && bStatus === "failed") return 1;
+
+    return a.name.localeCompare(b.name);
+  });
+
   const checked = apps.filter((app) => latestVersion(app) !== "Not checked").length;
   const failed = apps.filter((app) => latestRun(app)?.status === "failed").length;
+  const success = apps.filter((app) => latestRun(app)?.status === "success").length;
+  const pending = apps.length - success - failed;
 
   return (
     <main style={styles.page}>
@@ -47,8 +60,8 @@ export default async function HomePage() {
           <a style={styles.button} href="/api/sources/seed">
             Seed sources
           </a>
-          <a style={styles.buttonPrimary} href="/api/sources/check?limit=10">
-            Check versions
+          <a style={styles.buttonPrimary} href="/api/sources/check?limit=25">
+            Check 25 versions
           </a>
         </div>
       </section>
@@ -60,20 +73,38 @@ export default async function HomePage() {
         </div>
 
         <div style={styles.card}>
-          <span style={styles.cardLabel}>Checked</span>
-          <strong style={styles.cardValue}>{checked}</strong>
+          <span style={styles.cardLabel}>Successful</span>
+          <strong style={styles.cardValue}>{success}</strong>
         </div>
 
         <div style={styles.card}>
           <span style={styles.cardLabel}>Failed</span>
           <strong style={styles.cardValue}>{failed}</strong>
         </div>
+
+        <div style={styles.card}>
+          <span style={styles.cardLabel}>Pending</span>
+          <strong style={styles.cardValue}>{pending}</strong>
+        </div>
       </section>
+
+      {failed > 0 && (
+        <section style={styles.warning}>
+          <strong>{failed} source checks need attention.</strong>
+          <span>
+            Failed rows are shown first so source patterns can be corrected quickly.
+          </span>
+        </section>
+      )}
 
       <section style={styles.panel}>
         <div style={styles.panelHeader}>
-          <h2 style={styles.panelTitle}>Tracked applications</h2>
-          <span style={styles.muted}>{apps.length} sources</span>
+          <div>
+            <h2 style={styles.panelTitle}>Tracked applications</h2>
+            <span style={styles.muted}>
+              {success}/{apps.length} successful latest-version checks
+            </span>
+          </div>
         </div>
 
         <div style={styles.tableWrap}>
@@ -81,17 +112,17 @@ export default async function HomePage() {
             <thead>
               <tr>
                 <th style={styles.th}>App</th>
-                <th style={styles.th}>Vendor</th>
-                <th style={styles.th}>Latest version</th>
+                <th style={styles.th}>Latest</th>
                 <th style={styles.th}>Source</th>
                 <th style={styles.th}>Status</th>
-                <th style={styles.th}>Links</th>
+                <th style={styles.th}>Last checked</th>
+                <th style={styles.th}>Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {apps.map((app) => {
-                const source = app.software_sources?.[0];
+              {sortedApps.map((app) => {
+                const source = latestSource(app);
                 const run = latestRun(app);
                 const version = latestVersion(app);
                 const releaseUrl = latestReleaseUrl(app);
@@ -100,14 +131,15 @@ export default async function HomePage() {
                   source?.metadata?.download_url ||
                   app.homepage_url;
 
+                const status = run?.status || "pending";
+
                 return (
                   <tr key={app.id}>
                     <td style={styles.td}>
                       <strong>{app.name}</strong>
-                      <div style={styles.small}>{app.winget_id}</div>
+                      <div style={styles.small}>{app.vendor}</div>
+                      <div style={styles.tiny}>{app.winget_id}</div>
                     </td>
-
-                    <td style={styles.td}>{app.vendor}</td>
 
                     <td style={styles.td}>
                       <code style={styles.code}>{version}</code>
@@ -122,26 +154,46 @@ export default async function HomePage() {
                       <span
                         style={{
                           ...styles.status,
-                          ...(run?.status === "failed"
+                          ...(status === "failed"
                             ? styles.statusBad
-                            : run?.status === "success"
+                            : status === "success"
                               ? styles.statusGood
                               : styles.statusPending),
                         }}
                       >
-                        {run?.status || "pending"}
+                        {status}
                       </span>
-                      <div style={styles.small}>{run?.message || ""}</div>
+
+                      {run?.message && (
+                        <div
+                          style={
+                            status === "failed"
+                              ? styles.errorMessage
+                              : styles.small
+                          }
+                        >
+                          {run.message}
+                        </div>
+                      )}
                     </td>
 
                     <td style={styles.td}>
-                      <a style={styles.link} href={releaseUrl} target="_blank">
-                        Release
-                      </a>
-                      {" · "}
-                      <a style={styles.link} href={downloadUrl} target="_blank">
-                        Download
-                      </a>
+                      <span style={styles.small}>
+                        {run?.checked_at
+                          ? new Date(run.checked_at).toLocaleString("en-GB")
+                          : "Never"}
+                      </span>
+                    </td>
+
+                    <td style={styles.td}>
+                      <div style={styles.actionLinks}>
+                        <a style={styles.link} href={releaseUrl} target="_blank">
+                          Release
+                        </a>
+                        <a style={styles.download} href={downloadUrl} target="_blank">
+                          Download
+                        </a>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -215,14 +267,13 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
     gap: 14,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   card: {
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     borderRadius: 16,
     padding: 18,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
   },
   cardLabel: {
     display: "block",
@@ -233,20 +284,26 @@ const styles = {
   cardValue: {
     fontSize: 30,
   },
+  warning: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    background: "#fff7ed",
+    color: "#9a3412",
+    border: "1px solid #fed7aa",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+  },
   panel: {
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     borderRadius: 18,
     overflow: "hidden",
-    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
   },
   panelHeader: {
     padding: 18,
     borderBottom: "1px solid #e5e7eb",
-    display: "flex",
-    justifyContent: "space-between",
-    gap: 12,
-    alignItems: "center",
   },
   panelTitle: {
     margin: 0,
@@ -283,6 +340,11 @@ const styles = {
     fontSize: 12,
     marginTop: 4,
   },
+  tiny: {
+    color: "#9ca3af",
+    fontSize: 11,
+    marginTop: 3,
+  },
   code: {
     background: "#f3f4f6",
     padding: "3px 6px",
@@ -317,8 +379,28 @@ const styles = {
     background: "#fef3c7",
     color: "#92400e",
   },
+  errorMessage: {
+    color: "#b91c1c",
+    fontSize: 12,
+    marginTop: 4,
+    maxWidth: 320,
+    whiteSpace: "normal",
+  },
+  actionLinks: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+  },
   link: {
     color: "#2563eb",
+    fontWeight: 700,
+    textDecoration: "none",
+  },
+  download: {
+    background: "#111827",
+    color: "#ffffff",
+    padding: "6px 9px",
+    borderRadius: 8,
     fontWeight: 700,
     textDecoration: "none",
   },
