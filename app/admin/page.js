@@ -119,45 +119,63 @@ export default function AdminPage() {
           <table style={styles.table}>
             <thead>
               <tr>
-                <th style={styles.th}>Winget ID</th>
-                <th style={styles.th}>Latest seen</th>
-                <th style={styles.th}>Manifest</th>
-                <th style={styles.th}>Action</th>
+                <th style={styles.th}>Name</th>
+<th style={styles.th}>Winget ID</th>
+<th style={styles.th}>Latest</th>
+<th style={styles.th}>Vendor</th>
+<th style={styles.th}>Installer</th>
+<th style={styles.th}>Manifest</th>
+<th style={styles.th}>Action</th>
               </tr>
             </thead>
 
             <tbody>
               {results.map((item) => (
                 <tr key={item.winget_id}>
-                  <td style={styles.td}>
-                    <strong>{item.winget_id}</strong>
-                  </td>
+  <td style={styles.td}>
+    <strong>{item.name || "Unknown"}</strong>
+    {item.error && <div style={styles.error}>{item.error}</div>}
+  </td>
 
-                  <td style={styles.td}>
-                    <code style={styles.code}>{item.latest_seen_version}</code>
-                  </td>
+  <td style={styles.td}>
+    <code style={styles.code}>{item.winget_id}</code>
+  </td>
 
-                  <td style={styles.td}>
-                    <a style={styles.link} href={item.html_url} target="_blank">
-                      View manifest
-                    </a>
-                  </td>
+  <td style={styles.td}>
+    <code style={styles.code}>
+      {item.latest_version || item.latest_seen_version}
+    </code>
+  </td>
 
-                  <td style={styles.td}>
-                    <button
-                      style={styles.importButton}
-                      onClick={() => importPackage(item.winget_id)}
-                      disabled={Boolean(importing)}
-                    >
-                      {importing === item.winget_id ? "Importing..." : "Import"}
-                    </button>
-                  </td>
-                </tr>
+  <td style={styles.td}>{item.vendor || "Unknown"}</td>
+
+  <td style={styles.td}>
+    <span style={styles.badge}>
+      {item.installer_type || "unknown"}
+    </span>
+  </td>
+
+  <td style={styles.td}>
+    <a style={styles.link} href={item.source_url || item.html_url} target="_blank">
+      View manifest
+    </a>
+  </td>
+
+  <td style={styles.td}>
+    <button
+      style={styles.importButton}
+      onClick={() => importPackage(item.winget_id)}
+      disabled={Boolean(importing) || item.importable === false}
+    >
+      {importing === item.winget_id ? "Importing..." : "Import"}
+    </button>
+  </td>
+</tr>
               ))}
 
               {results.length === 0 && (
                 <tr>
-                  <td style={styles.empty} colSpan={4}>
+                  <td style={styles.empty} colSpan={7}>
                     Search for an app to import from Winget.
                   </td>
                 </tr>
@@ -330,4 +348,20 @@ const styles = {
     textAlign: "center",
     color: "#6b7280",
   },
+  badge: {
+  display: "inline-block",
+  background: "#eef2ff",
+  color: "#3730a3",
+  borderRadius: 999,
+  padding: "3px 8px",
+  fontSize: 12,
+  fontWeight: 700,
+},
+error: {
+  color: "#b91c1c",
+  fontSize: 12,
+  marginTop: 4,
+  maxWidth: 320,
+  whiteSpace: "normal",
+},
 };
