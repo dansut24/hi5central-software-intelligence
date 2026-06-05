@@ -3,6 +3,72 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+function wildcardToRegex(pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+async function resolveGithubAsset(metadata) {
+  const owner = metadata?.owner;
+  const repo = metadata?.repo;
+  const assetPattern = metadata?.assetPattern;
+
+  if (!owner || !repo || !assetPattern) {
+    throw new Error("github_asset requires owner, repo and assetPattern");
+  }
+
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Hi5Central-Software-Intelligence",
+      },
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`GitHub latest release failed: HTTP ${res.status}`);
+  }
+
+  const release = await res.json();
+  const regex = wildcardToRegex(assetPattern);
+
+  const asset = (release.assets || []).find((item) => regex.test(item.name));
+
+  if (!asset) {
+    throw new Error(`No GitHub asset matched ${assetPattern}`);
+  }
+
+  return asset.browser_download_url;
+}
+
+async function getFreshDownloadUrl(installer) {
+  if (installer.download_resolver === "github_asset") {
+    return resolveGithubAsset(installer.resolver_metadata || {});
+  }
+
+  return installer.resolved_download_url || installer.download_url;
+}
+
+function buildInstallCommand(installer) {
+  if (installer.installer_type === "msi") {
+    return {
+      executable: "msiexec.exe",
+      args: `/i "{installer_path}" ${installer.silent_install_args || ""}`.trim(),
+    };
+  }
+
+  return {
+    executable: "installer",
+    args: `"{installer_path}" ${installer.silent_install_args || ""}`.trim(),
+  };
+}
+
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -36,6 +102,8 @@ export async function POST(request) {
           installer_type,
           download_url,
           resolved_download_url,
+          download_resolver,
+          resolver_metadata,
           silent_install_args,
           silent_uninstall_args,
           validation_status
@@ -81,6 +149,8 @@ export async function POST(request) {
       );
     }
 
+    const downloadUrl = await getFreshDownloadUrl(installer);
+
     return NextResponse.json({
       ok: true,
       plan: {
@@ -93,14 +163,8 @@ export async function POST(request) {
         platform: installer.platform,
         architecture: installer.architecture,
         installer_type: installer.installer_type,
-        download_url: installer.resolved_download_url || installer.download_url,
-        install_command: {
-          executable: installer.installer_type === "msi" ? "msiexec.exe" : "installer",
-          args:
-            installer.installer_type === "msi"
-              ? `/i "{installer_path}" ${installer.silent_install_args || ""}`.trim()
-              : `"{installer_path}" ${installer.silent_install_args || ""}`.trim()
-        },
+        download_url: downloadUrl,
+        install_command: buildInstallCommand(installer),
         uninstall_command: {
           args: installer.silent_uninstall_args,
         },

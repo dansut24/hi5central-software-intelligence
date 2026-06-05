@@ -3,6 +3,58 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+function wildcardToRegex(pattern) {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*/g, ".*");
+
+  return new RegExp(`^${escaped}$`, "i");
+}
+
+async function resolveGithubAsset(metadata) {
+  const owner = metadata?.owner;
+  const repo = metadata?.repo;
+  const assetPattern = metadata?.assetPattern;
+
+  if (!owner || !repo || !assetPattern) {
+    throw new Error("github_asset requires owner, repo and assetPattern");
+  }
+
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Hi5Central-Software-Intelligence",
+      },
+    }
+  );
+
+  if (!res.ok) {
+    throw new Error(`GitHub latest release failed: HTTP ${res.status}`);
+  }
+
+  const release = await res.json();
+  const regex = wildcardToRegex(assetPattern);
+
+  const asset = (release.assets || []).find((item) => regex.test(item.name));
+
+  if (!asset) {
+    throw new Error(`No GitHub asset matched ${assetPattern}`);
+  }
+
+  return asset.browser_download_url;
+}
+
+async function getFreshDownloadUrl(installer) {
+  if (installer.download_resolver === "github_asset") {
+    return resolveGithubAsset(installer.resolver_metadata || {});
+  }
+
+  return installer.resolved_download_url || installer.download_url;
+}
+
 function buildInstallCommand(installer) {
   if (installer.installer_type === "msi") {
     return {
@@ -17,7 +69,7 @@ function buildInstallCommand(installer) {
   };
 }
 
-function buildPlan(app) {
+async function buildPlan(app) {
   const latest = app.software_versions?.[0];
   const installer = app.software_installers?.find(
     (item) => item.validation_status === "ready"
@@ -25,6 +77,8 @@ function buildPlan(app) {
   const detectionRule = app.software_detection_rules?.[0] || null;
 
   if (!latest || !installer) return null;
+
+  const downloadUrl = await getFreshDownloadUrl(installer);
 
   return {
     software_id: app.id,
@@ -36,7 +90,7 @@ function buildPlan(app) {
     platform: installer.platform,
     architecture: installer.architecture,
     installer_type: installer.installer_type,
-    download_url: installer.resolved_download_url || installer.download_url,
+    download_url: downloadUrl,
     install_command: buildInstallCommand(installer),
     uninstall_command: {
       args: installer.silent_uninstall_args,
@@ -71,6 +125,8 @@ export async function GET() {
         installer_type,
         download_url,
         resolved_download_url,
+        download_resolver,
+        resolver_metadata,
         silent_install_args,
         silent_uninstall_args,
         validation_status
@@ -92,7 +148,16 @@ export async function GET() {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  const plans = (data || []).map(buildPlan).filter(Boolean);
+  const plans = [];
+
+  for (const app of data || []) {
+    try {
+      const plan = await buildPlan(app);
+      if (plan) plans.push(plan);
+    } catch (error) {
+      // Skip broken plans for now. They remain visible in installer validation dashboard.
+    }
+  }
 
   return NextResponse.json({
     ok: true,
