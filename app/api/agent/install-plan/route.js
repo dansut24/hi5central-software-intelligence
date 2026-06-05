@@ -99,7 +99,7 @@ export async function POST(request) {
           args:
             installer.installer_type === "msi"
               ? `/i "{installer_path}" ${installer.silent_install_args || ""}`.trim()
-              : `" {installer_path}" ${installer.silent_install_args || ""}`.trim(),
+              : `"{installer_path}" ${installer.silent_install_args || ""}`.trim()
         },
         uninstall_command: {
           args: installer.silent_uninstall_args,
