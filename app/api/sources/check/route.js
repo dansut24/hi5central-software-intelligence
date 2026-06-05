@@ -48,14 +48,27 @@ async function resolveVendorJson(metadata) {
   if (Array.isArray(target) && metadata.arrayFind) {
     target = target.find((row) =>
       Object.entries(metadata.arrayFind).every(([key, value]) => {
-        return getPath(row, key) === value;
+        const actual = getPath(row, key);
+
+        if (value === true) return Boolean(actual) === true;
+        if (value === false) return Boolean(actual) === false;
+
+        return actual === value;
       })
     );
+  }
+
+  if (!target && metadata.fallbackArrayIndex !== undefined && Array.isArray(json)) {
+    target = json[metadata.fallbackArrayIndex];
   }
 
   const rawVersion = metadata.versionPath
     ? getPath(target, metadata.versionPath)
     : target;
+
+  if (!rawVersion) {
+    throw new Error("Could not resolve version from vendor_json source");
+  }
 
   return {
     version: cleanVersion(rawVersion, metadata.stripPrefix),
