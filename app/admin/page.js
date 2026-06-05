@@ -30,32 +30,34 @@ export default function AdminPage() {
   }
 
   async function importPackage(wingetId) {
-    setImporting(wingetId);
-    setMessage("");
+  setImporting(wingetId);
+  setMessage("");
 
-    try {
-      const res = await fetch("/api/winget/import", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          winget_id: wingetId,
-          category,
-        }),
-      });
+  try {
+    const res = await fetch("/api/winget/import-and-validate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        winget_id: wingetId,
+        category,
+      }),
+    });
 
-      const json = await res.json();
+    const json = await res.json();
 
-      if (!json.ok) throw new Error(json.error);
+    if (!json.ok) throw new Error(json.error);
 
-      setMessage(`Imported ${json.imported.name} ${json.imported.version}`);
-    } catch (error) {
-      setMessage(error.message);
-    } finally {
-      setImporting("");
-    }
+    setMessage(
+      `Imported ${json.imported.name} ${json.imported.version} -- validation: ${json.validation.status}`
+    );
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setImporting("");
   }
+}
 
   return (
     <main style={styles.page}>
@@ -167,7 +169,7 @@ export default function AdminPage() {
       onClick={() => importPackage(item.winget_id)}
       disabled={Boolean(importing) || item.importable === false}
     >
-      {importing === item.winget_id ? "Importing..." : "Import"}
+      {importing === item.winget_id ? "Importing..." : "Import + Validate"}
     </button>
   </td>
 </tr>
