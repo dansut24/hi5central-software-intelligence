@@ -191,8 +191,8 @@ export async function GET(request) {
   return NextResponse.json({
     ok: true,
     count: results.length,
-    directCount: results.filter((r) => r.direct).length,
-    nonDirectCount: results.filter((r) => !r.direct).length,
+    directCount: results.filter((r) => r.status === "success" && r.direct).length,
+nonDirectCount: results.filter((r) => r.status !== "success" || !r.direct).length,
     results,
   });
 }
