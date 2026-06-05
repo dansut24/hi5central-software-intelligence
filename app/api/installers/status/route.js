@@ -10,25 +10,33 @@ export async function GET() {
     .from("software_installers")
     .select(`
       id,
-      platform,
-      architecture,
-      installer_type,
-      download_url,
-      silent_install_args,
-      silent_uninstall_args,
-      checksum,
-      checksum_type,
-      requires_reboot,
-      created_at,
-      updated_at,
-      software_catalogue (
-        id,
-        name,
-        vendor,
-        winget_id,
-        category,
-        homepage_url
-      )
+platform,
+architecture,
+installer_type,
+download_url,
+download_resolver,
+resolver_metadata,
+silent_install_args,
+silent_uninstall_args,
+checksum,
+checksum_type,
+requires_reboot,
+validation_status,
+validation_message,
+validated_at,
+resolved_download_url,
+resolved_content_type,
+resolved_content_length,
+created_at,
+updated_at,
+software_catalogue (
+  id,
+  name,
+  vendor,
+  winget_id,
+  category,
+  homepage_url
+)
     `)
     .order("updated_at", { ascending: false });
 
