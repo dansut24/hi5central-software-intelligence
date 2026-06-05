@@ -6,7 +6,6 @@ async function getJson(path) {
   });
 
   if (!res.ok) return null;
-
   return res.json();
 }
 
@@ -28,6 +27,22 @@ function findInstaller(app, installers) {
   );
 }
 
+function formatBytes(value) {
+  const size = Number(value || 0);
+  if (!size) return "Unknown";
+  if (size > 1024 * 1024 * 1024) return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (size > 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
+  if (size > 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+}
+
+function validationStyle(status) {
+  if (status === "ready") return styles.statusGood;
+  if (status === "needs_resolver") return styles.statusWarn;
+  if (status === "broken") return styles.statusBad;
+  return styles.statusPending;
+}
+
 export default async function HomePage() {
   const statusData = await getJson("/api/sources/status");
   const installerData = await getJson("/api/installers/status");
@@ -35,29 +50,31 @@ export default async function HomePage() {
   const apps = statusData?.apps || [];
   const installers = installerData?.installers || [];
 
-  const sortedApps = [...apps].sort((a, b) => {
-    const aStatus = latestRun(a)?.status || "pending";
-    const bStatus = latestRun(b)?.status || "pending";
-
-    if (aStatus === "failed" && bStatus !== "failed") return -1;
-    if (aStatus !== "failed" && bStatus === "failed") return 1;
-
-    return a.name.localeCompare(b.name);
-  });
-
   const success = apps.filter((app) => latestRun(app)?.status === "success").length;
   const failed = apps.filter((app) => latestRun(app)?.status === "failed").length;
   const pending = apps.length - success - failed;
 
-  const installerCount = installers.length;
-  const directInstallerCount = installers.filter((installer) => {
-    const url = installer.download_url || "";
-    return (
-      url.includes(".msi") ||
-      url.includes(".exe") ||
-      installer.download_resolver === "github_asset"
-    );
-  }).length;
+  const readyInstallers = installers.filter((i) => i.validation_status === "ready").length;
+  const needsResolver = installers.filter((i) => i.validation_status === "needs_resolver").length;
+  const brokenInstallers = installers.filter((i) => i.validation_status === "broken").length;
+
+  const sortedApps = [...apps].sort((a, b) => {
+    const ai = findInstaller(a, installers);
+    const bi = findInstaller(b, installers);
+
+    const rank = {
+      broken: 0,
+      needs_resolver: 1,
+      pending: 2,
+      ready: 3,
+    };
+
+    const av = rank[ai?.validation_status || "pending"];
+    const bv = rank[bi?.validation_status || "pending"];
+
+    if (av !== bv) return av - bv;
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <main style={styles.page}>
@@ -66,65 +83,41 @@ export default async function HomePage() {
           <p style={styles.eyebrow}>Hi5Central</p>
           <h1 style={styles.title}>Software Intelligence</h1>
           <p style={styles.subtitle}>
-            Vendor-direct release and installer tracking for managed software.
+            Vendor-direct versions, installer validation, and patch-readiness tracking.
           </p>
         </div>
 
         <div style={styles.actions}>
-          <a style={styles.button} href="/api/sources/seed">
-            Seed sources
-          </a>
-          <a style={styles.button} href="/api/installers/seed">
-            Seed installers
-          </a>
-          <a style={styles.buttonPrimary} href="/api/sources/check?limit=25">
-            Check versions
-          </a>
-          <a
-            style={styles.buttonDark}
-            href="/api/installers/validate-downloads?limit=10"
-          >
+          <a style={styles.button} href="/api/sources/seed">Seed sources</a>
+          <a style={styles.button} href="/api/installers/seed">Seed installers</a>
+          <a style={styles.buttonPrimary} href="/api/sources/check?limit=25">Check versions</a>
+          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=25">
             Validate installers
           </a>
         </div>
       </section>
 
       <section style={styles.cards}>
-        <div style={styles.card}>
-          <span style={styles.cardLabel}>Applications</span>
-          <strong style={styles.cardValue}>{apps.length}</strong>
-        </div>
-
-        <div style={styles.card}>
-          <span style={styles.cardLabel}>Version checks</span>
-          <strong style={styles.cardValue}>{success}</strong>
-          <span style={styles.cardHint}>{failed} failed / {pending} pending</span>
-        </div>
-
-        <div style={styles.card}>
-          <span style={styles.cardLabel}>Installers</span>
-          <strong style={styles.cardValue}>{installerCount}</strong>
-        </div>
-
-        <div style={styles.card}>
-          <span style={styles.cardLabel}>Likely direct</span>
-          <strong style={styles.cardValue}>{directInstallerCount}</strong>
-        </div>
+        <Card label="Applications" value={apps.length} />
+        <Card label="Version checks" value={success} hint={`${failed} failed / ${pending} pending`} />
+        <Card label="Ready installers" value={readyInstallers} />
+        <Card label="Needs resolver" value={needsResolver} />
+        <Card label="Broken" value={brokenInstallers} />
       </section>
 
-      {failed > 0 && (
+      {(needsResolver > 0 || brokenInstallers > 0) && (
         <section style={styles.warning}>
-          <strong>{failed} source checks need attention.</strong>
-          <span>Failed rows are shown first.</span>
+          <strong>{needsResolver + brokenInstallers} installer definitions need attention.</strong>
+          <span>Broken and resolver-needed rows are shown first.</span>
         </section>
       )}
 
       <section style={styles.panel}>
         <div style={styles.panelHeader}>
           <div>
-            <h2 style={styles.panelTitle}>Tracked applications</h2>
+            <h2 style={styles.panelTitle}>Patch readiness</h2>
             <span style={styles.muted}>
-              {success}/{apps.length} version checks successful · {installerCount} installers seeded
+              {readyInstallers}/{installers.length} installers ready for agent use
             </span>
           </div>
         </div>
@@ -135,10 +128,11 @@ export default async function HomePage() {
               <tr>
                 <th style={styles.th}>App</th>
                 <th style={styles.th}>Latest</th>
-                <th style={styles.th}>Version source</th>
+                <th style={styles.th}>Version Source</th>
                 <th style={styles.th}>Installer</th>
-                <th style={styles.th}>Silent args</th>
-                <th style={styles.th}>Status</th>
+                <th style={styles.th}>Validation</th>
+                <th style={styles.th}>Size</th>
+                <th style={styles.th}>Silent Args</th>
                 <th style={styles.th}>Actions</th>
               </tr>
             </thead>
@@ -148,15 +142,15 @@ export default async function HomePage() {
                 const source = latestSource(app);
                 const run = latestRun(app);
                 const installer = findInstaller(app, installers);
-                const status = run?.status || "pending";
-
-                const releaseUrl =
-                  app.software_versions?.[0]?.release_url || app.homepage_url;
+                const releaseUrl = app.software_versions?.[0]?.release_url || app.homepage_url;
 
                 const downloadUrl =
+                  installer?.resolved_download_url ||
                   installer?.download_url ||
                   source?.metadata?.downloadUrl ||
                   app.homepage_url;
+
+                const validation = installer?.validation_status || "pending";
 
                 return (
                   <tr key={app.id}>
@@ -172,7 +166,7 @@ export default async function HomePage() {
 
                     <td style={styles.td}>
                       <span style={styles.badge}>{source?.source_type || "none"}</span>
-                      <div style={styles.small}>{source?.source_name}</div>
+                      <div style={styles.small}>{run?.status || "pending"}</div>
                     </td>
 
                     <td style={styles.td}>
@@ -186,8 +180,30 @@ export default async function HomePage() {
                           </div>
                         </>
                       ) : (
-                        <span style={styles.statusPending}>No installer</span>
+                        <span style={{ ...styles.status, ...styles.statusPending }}>
+                          No installer
+                        </span>
                       )}
+                    </td>
+
+                    <td style={styles.td}>
+                      <span style={{ ...styles.status, ...validationStyle(validation) }}>
+                        {validation}
+                      </span>
+                      {installer?.validation_message && (
+                        <div style={validation === "ready" ? styles.small : styles.errorMessage}>
+                          {installer.validation_message}
+                        </div>
+                      )}
+                      {installer?.validated_at && (
+                        <div style={styles.tiny}>
+                          {new Date(installer.validated_at).toLocaleString("en-GB")}
+                        </div>
+                      )}
+                    </td>
+
+                    <td style={styles.td}>
+                      {formatBytes(installer?.resolved_content_length)}
                     </td>
 
                     <td style={styles.td}>
@@ -195,33 +211,6 @@ export default async function HomePage() {
                         <code style={styles.code}>{installer.silent_install_args}</code>
                       ) : (
                         <span style={styles.small}>Not set</span>
-                      )}
-                    </td>
-
-                    <td style={styles.td}>
-                      <span
-                        style={{
-                          ...styles.status,
-                          ...(status === "failed"
-                            ? styles.statusBad
-                            : status === "success"
-                              ? styles.statusGood
-                              : styles.statusPending),
-                        }}
-                      >
-                        {status}
-                      </span>
-
-                      {run?.message && (
-                        <div
-                          style={
-                            status === "failed"
-                              ? styles.errorMessage
-                              : styles.small
-                          }
-                        >
-                          {run.message}
-                        </div>
                       )}
                     </td>
 
@@ -246,14 +235,23 @@ export default async function HomePage() {
   );
 }
 
+function Card({ label, value, hint }) {
+  return (
+    <div style={styles.card}>
+      <span style={styles.cardLabel}>{label}</span>
+      <strong style={styles.cardValue}>{value}</strong>
+      {hint && <span style={styles.cardHint}>{hint}</span>}
+    </div>
+  );
+}
+
 const styles = {
   page: {
     minHeight: "100vh",
     padding: 24,
     background: "#f6f7fb",
     color: "#111827",
-    fontFamily:
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
   },
   header: {
     display: "flex",
@@ -263,32 +261,14 @@ const styles = {
     marginBottom: 24,
     flexWrap: "wrap",
   },
-  eyebrow: {
-    margin: 0,
-    color: "#2563eb",
-    fontWeight: 700,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
-    fontSize: 12,
-  },
-  title: {
-    margin: "4px 0",
-    fontSize: 34,
-    lineHeight: 1.1,
-  },
-  subtitle: {
-    margin: 0,
-    color: "#6b7280",
-  },
-  actions: {
-    display: "flex",
-    gap: 10,
-    flexWrap: "wrap",
-  },
+  eyebrow: { margin: 0, color: "#2563eb", fontWeight: 700, textTransform: "uppercase", fontSize: 12 },
+  title: { margin: "4px 0", fontSize: 34, lineHeight: 1.1 },
+  subtitle: { margin: 0, color: "#6b7280" },
+  actions: { display: "flex", gap: 10, flexWrap: "wrap" },
   button: {
     padding: "10px 14px",
     borderRadius: 10,
-    background: "#ffffff",
+    background: "#fff",
     color: "#111827",
     textDecoration: "none",
     border: "1px solid #d1d5db",
@@ -298,7 +278,7 @@ const styles = {
     padding: "10px 14px",
     borderRadius: 10,
     background: "#2563eb",
-    color: "#ffffff",
+    color: "#fff",
     textDecoration: "none",
     border: "1px solid #2563eb",
     fontWeight: 700,
@@ -307,37 +287,21 @@ const styles = {
     padding: "10px 14px",
     borderRadius: 10,
     background: "#111827",
-    color: "#ffffff",
+    color: "#fff",
     textDecoration: "none",
     border: "1px solid #111827",
     fontWeight: 700,
   },
   cards: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 14,
     marginBottom: 20,
   },
-  card: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    padding: 18,
-  },
-  cardLabel: {
-    display: "block",
-    color: "#6b7280",
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  cardValue: {
-    fontSize: 30,
-    display: "block",
-  },
-  cardHint: {
-    color: "#6b7280",
-    fontSize: 12,
-  },
+  card: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 18 },
+  cardLabel: { display: "block", color: "#6b7280", fontSize: 13, marginBottom: 8 },
+  cardValue: { display: "block", fontSize: 30 },
+  cardHint: { color: "#6b7280", fontSize: 12 },
   warning: {
     display: "flex",
     gap: 8,
@@ -349,32 +313,12 @@ const styles = {
     padding: 14,
     marginBottom: 20,
   },
-  panel: {
-    background: "#ffffff",
-    border: "1px solid #e5e7eb",
-    borderRadius: 18,
-    overflow: "hidden",
-  },
-  panelHeader: {
-    padding: 18,
-    borderBottom: "1px solid #e5e7eb",
-  },
-  panelTitle: {
-    margin: 0,
-    fontSize: 18,
-  },
-  muted: {
-    color: "#6b7280",
-    fontSize: 13,
-  },
-  tableWrap: {
-    overflowX: "auto",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 14,
-  },
+  panel: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 18, overflow: "hidden" },
+  panelHeader: { padding: 18, borderBottom: "1px solid #e5e7eb" },
+  panelTitle: { margin: 0, fontSize: 18 },
+  muted: { color: "#6b7280", fontSize: 13 },
+  tableWrap: { overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse", fontSize: 14 },
   th: {
     textAlign: "left",
     padding: "12px 16px",
@@ -383,27 +327,10 @@ const styles = {
     borderBottom: "1px solid #e5e7eb",
     whiteSpace: "nowrap",
   },
-  td: {
-    padding: "14px 16px",
-    borderBottom: "1px solid #f1f5f9",
-    verticalAlign: "top",
-    whiteSpace: "nowrap",
-  },
-  small: {
-    color: "#6b7280",
-    fontSize: 12,
-    marginTop: 4,
-  },
-  tiny: {
-    color: "#9ca3af",
-    fontSize: 11,
-    marginTop: 3,
-  },
-  code: {
-    background: "#f3f4f6",
-    padding: "3px 6px",
-    borderRadius: 6,
-  },
+  td: { padding: "14px 16px", borderBottom: "1px solid #f1f5f9", verticalAlign: "top", whiteSpace: "nowrap" },
+  small: { color: "#6b7280", fontSize: 12, marginTop: 4 },
+  tiny: { color: "#9ca3af", fontSize: 11, marginTop: 3 },
+  code: { background: "#f3f4f6", padding: "3px 6px", borderRadius: 6 },
   badge: {
     display: "inline-block",
     background: "#eef2ff",
@@ -416,7 +343,7 @@ const styles = {
   badgeDark: {
     display: "inline-block",
     background: "#111827",
-    color: "#ffffff",
+    color: "#fff",
     borderRadius: 999,
     padding: "3px 8px",
     fontSize: 12,
@@ -430,38 +357,16 @@ const styles = {
     fontWeight: 800,
     textTransform: "uppercase",
   },
-  statusGood: {
-    background: "#dcfce7",
-    color: "#166534",
-  },
-  statusBad: {
-    background: "#fee2e2",
-    color: "#991b1b",
-  },
-  statusPending: {
-    background: "#fef3c7",
-    color: "#92400e",
-  },
-  errorMessage: {
-    color: "#b91c1c",
-    fontSize: 12,
-    marginTop: 4,
-    maxWidth: 320,
-    whiteSpace: "normal",
-  },
-  actionLinks: {
-    display: "flex",
-    gap: 8,
-    alignItems: "center",
-  },
-  link: {
-    color: "#2563eb",
-    fontWeight: 700,
-    textDecoration: "none",
-  },
+  statusGood: { background: "#dcfce7", color: "#166534" },
+  statusWarn: { background: "#fef3c7", color: "#92400e" },
+  statusBad: { background: "#fee2e2", color: "#991b1b" },
+  statusPending: { background: "#e5e7eb", color: "#374151" },
+  errorMessage: { color: "#b91c1c", fontSize: 12, marginTop: 4, maxWidth: 320, whiteSpace: "normal" },
+  actionLinks: { display: "flex", gap: 8, alignItems: "center" },
+  link: { color: "#2563eb", fontWeight: 700, textDecoration: "none" },
   download: {
     background: "#111827",
-    color: "#ffffff",
+    color: "#fff",
     padding: "6px 9px",
     borderRadius: 8,
     fontWeight: 700,
