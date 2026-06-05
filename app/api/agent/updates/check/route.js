@@ -68,6 +68,15 @@ export async function POST(request) {
           silent_install_args,
           silent_uninstall_args,
           validation_status
+        ),
+        software_detection_rules (
+        platform,
+        method,
+        registry_hive,
+        registry_path,
+        registry_value,
+        file_path,
+        version_command
         )
       `)
       .in("winget_id", wingetIds)
@@ -94,18 +103,19 @@ export async function POST(request) {
 
       if (comparison < 0) {
         updates.push({
-          software_id: app.id,
-          name: app.name,
-          vendor: app.vendor,
-          winget_id: app.winget_id,
-          installed_version: installedItem.version,
-          latest_version: latest.version,
-          release_url: latest.release_url,
-          installer_type: installer.installer_type,
-          download_url: installer.resolved_download_url || installer.download_url,
-          silent_install_args: installer.silent_install_args,
-          silent_uninstall_args: installer.silent_uninstall_args,
-        });
+  software_id: app.id,
+  name: app.name,
+  vendor: app.vendor,
+  winget_id: app.winget_id,
+  installed_version: installedItem.version,
+  latest_version: latest.version,
+  release_url: latest.release_url,
+  installer_type: installer.installer_type,
+  download_url: installer.resolved_download_url || installer.download_url,
+  silent_install_args: installer.silent_install_args,
+  silent_uninstall_args: installer.silent_uninstall_args,
+  detection_rule: app.software_detection_rules?.[0] || null,
+});
       }
     }
 
