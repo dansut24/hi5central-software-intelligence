@@ -33,6 +33,8 @@ export async function GET() {
           architecture: installer.architecture || "x64",
           installer_type: installer.installer_type,
           download_url: installer.download_url,
+          download_resolver: installer.download_resolver || "direct_url",
+resolver_metadata: installer.resolver_metadata || {},
           silent_install_args: installer.silent_install_args,
           silent_uninstall_args: installer.silent_uninstall_args,
           checksum: installer.checksum || null,
