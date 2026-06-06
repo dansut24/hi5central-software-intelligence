@@ -87,6 +87,53 @@ async function validateUrl(url) {
   }
 }
 
+function normaliseRegistryPath(path = "") {
+  const value = String(path || "");
+
+  if (!value) return "";
+
+  if (value.includes("\\")) {
+    return value;
+  }
+
+  const knownPaths = {
+    SOFTWAREGoogleChromeBLBeacon: "SOFTWARE\\Google\\Chrome\\BLBeacon",
+    SOFTWAREMicrosoftEdgeBLBeacon: "SOFTWARE\\Microsoft\\Edge\\BLBeacon",
+    SOFTWAREMozillaMozillaFirefox: "SOFTWARE\\Mozilla\\Mozilla Firefox",
+  };
+
+  if (knownPaths[value]) {
+    return knownPaths[value];
+  }
+
+  return value
+    .replace(/^SOFTWARE/i, "SOFTWARE\\")
+    .replace(/Microsoft/i, "Microsoft\\")
+    .replace(/Windows/i, "Windows\\")
+    .replace(/CurrentVersion/i, "CurrentVersion\\")
+    .replace(/Uninstall/i, "Uninstall\\")
+    .replace(/Google/i, "Google\\")
+    .replace(/Chrome/i, "Chrome\\")
+    .replace(/Edge/i, "Edge\\")
+    .replace(/Mozilla/i, "Mozilla\\")
+    .replace(/BLBeacon/i, "BLBeacon");
+}
+
+function normalizeRule(rule) {
+  if (!rule) return null;
+
+  return {
+    method: rule.method,
+    registry_hive: rule.registry_hive || null,
+    registry_path: rule.registry_path
+      ? normaliseRegistryPath(rule.registry_path)
+      : null,
+    registry_value: rule.registry_value || null,
+    file_path: rule.file_path || null,
+    version_command: rule.version_command || null,
+  };
+}
+
 function ruleKey(rule) {
   return [
     rule.method,
@@ -101,16 +148,18 @@ function ruleKey(rule) {
 async function upsertDetectionRule(supabase, softwareId, rule) {
   if (!rule?.method) return null;
 
+  const normalized = normalizeRule(rule);
+
   const row = {
     software_id: softwareId,
     platform: "windows",
-    method: rule.method,
-    registry_hive: rule.registry_hive || null,
-    registry_path: rule.registry_path || null,
-    registry_value: rule.registry_value || null,
-    file_path: rule.file_path || null,
-    version_command: rule.version_command || null,
-    rule_key: ruleKey(rule),
+    method: normalized.method,
+    registry_hive: normalized.registry_hive,
+    registry_path: normalized.registry_path,
+    registry_value: normalized.registry_value,
+    file_path: normalized.file_path,
+    version_command: normalized.version_command,
+    rule_key: ruleKey(normalized),
     updated_at: new Date().toISOString(),
   };
 
@@ -145,7 +194,9 @@ export async function POST(request) {
       vendor: curated.vendor || "",
       winget_id:
         curated.winget_id ||
-        `hi5central.${String(curated.name).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        `hi5central.${String(curated.name)
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")}`,
       category: curated.category || "Hi5Central",
       homepage_url: curated.homepage_url || null,
       release_url: curated.release_url || null,
@@ -154,7 +205,7 @@ export async function POST(request) {
       download_url: curated.download_url,
       silent_install_args: curated.silent_install_args || "/S",
       silent_uninstall_args: curated.silent_uninstall_args || "/S",
-      detection_rule: curated.detection_rule || null,
+      detection_rule: normalizeRule(curated.detection_rule || null),
       version_source: curated.version_source || null,
     };
 
