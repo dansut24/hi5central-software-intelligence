@@ -173,7 +173,12 @@ const check = await validateUrl(pkg.download_url);
           resolved_content_type: check.contentType,
           resolved_content_length: check.contentLength,
           download_resolver: "direct_url",
-          resolver_metadata: {},
+          resolver_metadata: {
+  source: "winget",
+  manifest: pkg.manifest_metadata || {},
+},
+checksum: pkg.checksum || null,
+checksum_type: pkg.checksum_type || null,
           silent_install_args: pkg.silent_install_args,
           silent_uninstall_args: pkg.silent_uninstall_args,
           validation_status: check.validationStatus,

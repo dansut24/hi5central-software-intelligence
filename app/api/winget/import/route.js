@@ -86,7 +86,12 @@ const { error: installerError } = await supabase
           installer_type: pkg.installer_type,
           download_url: pkg.download_url,
           download_resolver: "direct_url",
-          resolver_metadata: {},
+          resolver_metadata: {
+  source: "winget",
+  manifest: pkg.manifest_metadata || {},
+},
+checksum: pkg.checksum || null,
+checksum_type: pkg.checksum_type || null,
           silent_install_args: pkg.silent_install_args,
           silent_uninstall_args: pkg.silent_uninstall_args,
           validation_status: "pending",
