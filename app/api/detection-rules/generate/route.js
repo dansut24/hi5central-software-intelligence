@@ -153,20 +153,29 @@ export async function POST(request) {
     }
 
     const generatedRule = normalizeRule(buildRule(software));
+    
+     const ruleKey = [
+  generatedRule.method,
+  generatedRule.registry_hive || "",
+  generatedRule.registry_path || "",
+  generatedRule.registry_value || "",
+  generatedRule.file_path || "",
+  generatedRule.version_command || "",
+].join(":");
 
     const { data: rule, error: ruleError } = await supabase
       .from("software_detection_rules")
-      .upsert(
-        {
-          software_id: software.id,
-          ...generatedRule,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict:
-            "software_id,platform,method,registry_hive,registry_path,registry_value,file_path,version_command",
-        }
-      )
+     .upsert(
+  {
+    software_id: software.id,
+    ...generatedRule,
+    rule_key: ruleKey,
+    updated_at: new Date().toISOString(),
+  },
+  {
+    onConflict: "software_id,platform,rule_key",
+  }
+)
       .select()
       .single();
 
