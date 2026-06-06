@@ -2,7 +2,23 @@
 
 import { useState } from "react";
 
+const PROVIDERS = {
+  winget: {
+    label: "Winget",
+    searchUrl: "/api/winget/search",
+    importUrl: "/api/winget/import-and-validate",
+    idField: "winget_id",
+  },
+  github: {
+    label: "GitHub",
+    searchUrl: "/api/github/search",
+    importUrl: "/api/github/import-and-validate",
+    idField: "package_id",
+  },
+};
+
 export default function AdminPage() {
+  const [provider, setProvider] = useState("winget");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Imported");
   const [loading, setLoading] = useState(false);
@@ -10,18 +26,22 @@ export default function AdminPage() {
   const [results, setResults] = useState([]);
   const [message, setMessage] = useState("");
 
-  async function searchWinget() {
+  const activeProvider = PROVIDERS[provider];
+
+  async function searchSoftware() {
     setLoading(true);
     setMessage("");
 
     try {
-      const res = await fetch(`/api/winget/search?q=${encodeURIComponent(query)}&limit=15`);
-      const json = await res.json();
+      const res = await fetch(
+        `${activeProvider.searchUrl}?q=${encodeURIComponent(query)}&limit=15`
+      );
 
+      const json = await res.json();
       if (!json.ok) throw new Error(json.error);
 
       setResults(json.results || []);
-      setMessage(`Found ${json.count} result(s).`);
+      setMessage(`Found ${json.count} result(s) from ${activeProvider.label}.`);
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -29,44 +49,64 @@ export default function AdminPage() {
     }
   }
 
-  async function importPackage(wingetId) {
-  setImporting(wingetId);
-  setMessage("");
+  async function importPackage(item) {
+    const packageId = item[activeProvider.idField];
 
-  try {
-    const res = await fetch("/api/winget/import-and-validate", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        winget_id: wingetId,
-        category,
-      }),
-    });
+    setImporting(packageId);
+    setMessage("");
 
-    const json = await res.json();
+    try {
+      const body =
+        provider === "github"
+          ? {
+              package_id: packageId,
+              category,
+              name: item.name,
+              vendor: item.vendor,
+            }
+          : {
+              winget_id: packageId,
+              category,
+            };
 
-    if (!json.ok) throw new Error(json.error);
+      const res = await fetch(activeProvider.importUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
 
-    setMessage(
-      `Imported ${json.imported.name} ${json.imported.version} -- validation: ${json.validation.status}`
-    );
-  } catch (error) {
-    setMessage(error.message);
-  } finally {
-    setImporting("");
+      const json = await res.json();
+
+      if (!json.ok) throw new Error(json.error);
+
+      setMessage(
+        `Imported ${json.imported.name} ${json.imported.version} -- validation: ${json.validation.status}`
+      );
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setImporting("");
+    }
   }
-}
+
+  function getItemId(item) {
+    return item.winget_id || item.package_id;
+  }
+
+  function getLatest(item) {
+    return item.latest_version || item.latest_seen_version || "";
+  }
 
   return (
     <main style={styles.page}>
       <section style={styles.header}>
         <div>
           <p style={styles.eyebrow}>Hi5Central Admin</p>
-          <h1 style={styles.title}>Winget Import</h1>
+          <h1 style={styles.title}>Software Import</h1>
           <p style={styles.subtitle}>
-            Search Winget, import software, then validate installers for patch readiness.
+            Search Winget or GitHub, import software, and validate installers in one click.
           </p>
         </div>
 
@@ -74,7 +114,7 @@ export default function AdminPage() {
           <a style={styles.button} href="/">
             Dashboard
           </a>
-          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=50">
+          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=100">
             Validate installers
           </a>
         </div>
@@ -82,13 +122,30 @@ export default function AdminPage() {
 
       <section style={styles.panel}>
         <div style={styles.searchRow}>
+          <select
+            style={styles.select}
+            value={provider}
+            onChange={(event) => {
+              setProvider(event.target.value);
+              setResults([]);
+              setMessage("");
+            }}
+          >
+            <option value="winget">Winget</option>
+            <option value="github">GitHub</option>
+          </select>
+
           <input
             style={styles.input}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search Winget, e.g. adobe reader, obs, wireshark"
+            placeholder={
+              provider === "github"
+                ? "Search GitHub, e.g. ventoy, rustdesk, obs"
+                : "Search Winget, e.g. adobe reader, chrome, wireshark"
+            }
             onKeyDown={(event) => {
-              if (event.key === "Enter") searchWinget();
+              if (event.key === "Enter") searchSoftware();
             }}
           />
 
@@ -101,10 +158,10 @@ export default function AdminPage() {
 
           <button
             style={styles.primaryButton}
-            onClick={searchWinget}
+            onClick={searchSoftware}
             disabled={loading || query.trim().length < 2}
           >
-            {loading ? "Searching..." : "Search"}
+            {loading ? "Searching..." : `Search ${activeProvider.label}`}
           </button>
         </div>
 
@@ -114,7 +171,9 @@ export default function AdminPage() {
       <section style={styles.panel}>
         <div style={styles.panelHeader}>
           <h2 style={styles.panelTitle}>Search results</h2>
-          <span style={styles.muted}>{results.length} candidates</span>
+          <span style={styles.muted}>
+            {results.length} candidates · {activeProvider.label}
+          </span>
         </div>
 
         <div style={styles.tableWrap}>
@@ -122,63 +181,72 @@ export default function AdminPage() {
             <thead>
               <tr>
                 <th style={styles.th}>Name</th>
-<th style={styles.th}>Winget ID</th>
-<th style={styles.th}>Latest</th>
-<th style={styles.th}>Vendor</th>
-<th style={styles.th}>Installer</th>
-<th style={styles.th}>Manifest</th>
-<th style={styles.th}>Action</th>
+                <th style={styles.th}>Package ID</th>
+                <th style={styles.th}>Latest</th>
+                <th style={styles.th}>Vendor</th>
+                <th style={styles.th}>Installer</th>
+                <th style={styles.th}>Source</th>
+                <th style={styles.th}>Action</th>
               </tr>
             </thead>
 
             <tbody>
-              {results.map((item) => (
-                <tr key={item.winget_id}>
-  <td style={styles.td}>
-    <strong>{item.name || "Unknown"}</strong>
-    {item.error && <div style={styles.error}>{item.error}</div>}
-  </td>
+              {results.map((item) => {
+                const id = getItemId(item);
 
-  <td style={styles.td}>
-    <code style={styles.code}>{item.winget_id}</code>
-  </td>
+                return (
+                  <tr key={id}>
+                    <td style={styles.td}>
+                      <strong>{item.name || id}</strong>
+                      {item.description && (
+                        <div style={styles.small}>{item.description}</div>
+                      )}
+                      {item.error && <div style={styles.error}>{item.error}</div>}
+                    </td>
 
-  <td style={styles.td}>
-    <code style={styles.code}>
-      {item.latest_version || item.latest_seen_version}
-    </code>
-  </td>
+                    <td style={styles.td}>
+                      <code style={styles.code}>{id}</code>
+                    </td>
 
-  <td style={styles.td}>{item.vendor || "Unknown"}</td>
+                    <td style={styles.td}>
+                      <code style={styles.code}>{getLatest(item) || "Unknown"}</code>
+                    </td>
 
-  <td style={styles.td}>
-    <span style={styles.badge}>
-      {item.installer_type || "unknown"}
-    </span>
-  </td>
+                    <td style={styles.td}>{item.vendor || "Unknown"}</td>
 
-  <td style={styles.td}>
-    <a style={styles.link} href={item.source_url || item.html_url} target="_blank">
-      View manifest
-    </a>
-  </td>
+                    <td style={styles.td}>
+                      <span style={styles.badge}>
+                        {item.installer_type || "unknown"}
+                      </span>
+                    </td>
 
-  <td style={styles.td}>
-    <button
-      style={styles.importButton}
-      onClick={() => importPackage(item.winget_id)}
-      disabled={Boolean(importing) || item.importable === false}
-    >
-      {importing === item.winget_id ? "Importing..." : "Import + Validate"}
-    </button>
-  </td>
-</tr>
-              ))}
+                    <td style={styles.td}>
+                      <a
+                        style={styles.link}
+                        href={item.source_url || item.html_url}
+                        target="_blank"
+                      >
+                        View source
+                      </a>
+                    </td>
+
+                    <td style={styles.td}>
+                      <button
+                        style={styles.importButton}
+                        onClick={() => importPackage(item)}
+                        disabled={Boolean(importing) || item.importable === false}
+                      >
+                        {importing === id ? "Importing..." : "Import + Validate"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
 
               {results.length === 0 && (
                 <tr>
                   <td style={styles.empty} colSpan={7}>
-                    Search for an app to import from Winget.
+                    Search for an app to import.
                   </td>
                 </tr>
               )}
@@ -259,6 +327,14 @@ const styles = {
     padding: 18,
     flexWrap: "wrap",
   },
+  select: {
+    width: 140,
+    padding: "12px 14px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    fontSize: 14,
+    background: "#ffffff",
+  },
   input: {
     flex: "1 1 320px",
     padding: "12px 14px",
@@ -326,10 +402,33 @@ const styles = {
     verticalAlign: "top",
     whiteSpace: "nowrap",
   },
+  small: {
+    color: "#6b7280",
+    fontSize: 12,
+    marginTop: 4,
+    maxWidth: 360,
+    whiteSpace: "normal",
+  },
   code: {
     background: "#f3f4f6",
     padding: "3px 6px",
     borderRadius: 6,
+  },
+  badge: {
+    display: "inline-block",
+    background: "#eef2ff",
+    color: "#3730a3",
+    borderRadius: 999,
+    padding: "3px 8px",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  error: {
+    color: "#b91c1c",
+    fontSize: 12,
+    marginTop: 4,
+    maxWidth: 360,
+    whiteSpace: "normal",
   },
   link: {
     color: "#2563eb",
@@ -350,20 +449,4 @@ const styles = {
     textAlign: "center",
     color: "#6b7280",
   },
-  badge: {
-  display: "inline-block",
-  background: "#eef2ff",
-  color: "#3730a3",
-  borderRadius: 999,
-  padding: "3px 8px",
-  fontSize: 12,
-  fontWeight: 700,
-},
-error: {
-  color: "#b91c1c",
-  fontSize: 12,
-  marginTop: 4,
-  maxWidth: 320,
-  whiteSpace: "normal",
-},
 };
