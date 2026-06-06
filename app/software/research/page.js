@@ -229,26 +229,32 @@ export default function SoftwareResearchPage() {
                   </td>
 
                   <td style={styles.td}>
-                    {row.status === "researched" || row.status === "needs_review" ? (
-                      
-                      <button
-  style={styles.secondaryButton}
-  onClick={() => setEditing(row)}
-  disabled={loading}
->
-  Edit
-</button>
-                      <button style={styles.importButton} onClick={() => approveRow(row.id)} disabled={loading}>
-                        Approve
-                      </button>
-                    ) : row.imported_software_id ? (
-                      <a style={styles.link} href={`/software/${row.imported_software_id}`}>
-                        Open
-                      </a>
-                    ) : (
-                      <span style={styles.muted}>No action</span>
-                    )}
-                  </td>
+  {row.status === "researched" || row.status === "needs_review" ? (
+    <div style={styles.actionGroup}>
+      <button
+        style={styles.secondaryButton}
+        onClick={() => setEditing(row)}
+        disabled={loading}
+      >
+        Edit
+      </button>
+
+      <button
+        style={styles.importButton}
+        onClick={() => approveRow(row.id)}
+        disabled={loading}
+      >
+        Approve
+      </button>
+    </div>
+  ) : row.imported_software_id ? (
+    <a style={styles.link} href={`/software/${row.imported_software_id}`}>
+      Open
+    </a>
+  ) : (
+    <span style={styles.muted}>No action</span>
+  )}
+</td>
                 </tr>
               ))}
 
@@ -541,6 +547,11 @@ modalActions: {
   display: "flex",
   gap: 10,
   marginTop: 18,
+  flexWrap: "wrap",
+},
+actionGroup: {
+  display: "flex",
+  gap: 8,
   flexWrap: "wrap",
 },
 };
