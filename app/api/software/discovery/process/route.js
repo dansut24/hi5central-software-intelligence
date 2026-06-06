@@ -114,7 +114,26 @@ function scoreMatch(discovered, result) {
 
   if (result.importable) score += 10;
 
-  return Math.min(score, 100);
+  const badVariantWords = [
+    "plugin",
+    "plugins",
+    "addon",
+    "addons",
+    "extension",
+    "extensions",
+    "beta",
+    "rc",
+    "preview",
+    "dev",
+    "insiders",
+    "vdi",
+  ];
+
+  if (badVariantWords.some((word) => resultName.includes(word))) {
+    score -= 30;
+  }
+
+  return Math.max(0, Math.min(score, 100));
 }
 
 function buildRegistryRuleFromDiscovery(discovery) {
@@ -396,7 +415,7 @@ export async function POST(request) {
             name: imported.app.name,
             vendor: imported.app.vendor,
             winget_id: imported.app.winget_id,
-            version: imported.app.version,
+            version: best.latest_version || best.latest_seen_version || null,
             confidence: best.score,
           },
           validation: {
