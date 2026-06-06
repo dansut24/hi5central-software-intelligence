@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-const [editing, setEditing] = useState(null);
-
 const STATUSES = ["pending", "researched", "needs_review", "imported", "failed"];
 
 export default function SoftwareResearchPage() {
@@ -12,6 +10,7 @@ export default function SoftwareResearchPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [editing, setEditing] = useState(null);
 
   async function loadRows(nextStatus = status) {
     setLoading(true);
