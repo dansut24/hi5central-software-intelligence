@@ -15,6 +15,12 @@ const PROVIDERS = {
     importUrl: "/api/github/import-and-validate",
     idField: "package_id",
   },
+  chocolatey: {
+    label: "Chocolatey",
+    searchUrl: "/api/chocolatey/search",
+    importUrl: "/api/chocolatey/import-and-validate",
+    idField: "package_id",
+  },
 };
 
 export default function AdminPage() {
@@ -57,17 +63,17 @@ export default function AdminPage() {
 
     try {
       const body =
-        provider === "github"
-          ? {
-              package_id: packageId,
-              category,
-              name: item.name,
-              vendor: item.vendor,
-            }
-          : {
-              winget_id: packageId,
-              category,
-            };
+  provider === "github" || provider === "chocolatey"
+    ? {
+        package_id: packageId,
+        category,
+        name: item.name,
+        vendor: item.vendor,
+      }
+    : {
+        winget_id: packageId,
+        category,
+      };
 
       const res = await fetch(activeProvider.importUrl, {
         method: "POST",
@@ -133,6 +139,8 @@ export default function AdminPage() {
           >
             <option value="winget">Winget</option>
             <option value="github">GitHub</option>
+            <option value="chocolatey">Chocolatey</option>
+            
           </select>
 
           <input
@@ -140,10 +148,12 @@ export default function AdminPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={
-              provider === "github"
-                ? "Search GitHub, e.g. ventoy, rustdesk, obs"
-                : "Search Winget, e.g. adobe reader, chrome, wireshark"
-            }
+  provider === "github"
+    ? "Search GitHub, e.g. ventoy, rustdesk, obs"
+    : provider === "chocolatey"
+      ? "Search Chocolatey, e.g. vlc, 7zip, firefox"
+      : "Search Winget, e.g. adobe reader, chrome, wireshark"
+}
             onKeyDown={(event) => {
               if (event.key === "Enter") searchSoftware();
             }}
