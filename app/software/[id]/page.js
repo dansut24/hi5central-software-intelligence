@@ -1,3 +1,5 @@
+import GenerateDetectionButton from "./GenerateDetectionButton";
+
 async function getSoftware(id) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
@@ -227,9 +229,12 @@ export default async function SoftwareDetailsPage({ params }) {
         </div>
       </section>
 
-      <section style={styles.panel}>
-        <h2 style={styles.panelTitle}>Detection Rules</h2>
-
+    <section style={styles.panel}>
+  <div style={styles.sectionHeader}>
+    <h2 style={styles.panelTitle}>Detection Rules</h2>
+    <GenerateDetectionButton softwareId={software.id} />
+  </div>
+  
         <div style={styles.tableWrap}>
           <table style={styles.table}>
             <thead>
@@ -439,9 +444,9 @@ const styles = {
     marginBottom: 20,
   },
   panelTitle: {
-    margin: "0 0 14px",
-    fontSize: 18,
-  },
+  margin: 0,
+  fontSize: 18,
+},
   muted: {
     color: "#6b7280",
   },
@@ -542,4 +547,12 @@ const styles = {
     color: "#6b7280",
     textAlign: "center",
   },
+  sectionHeader: {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "center",
+  flexWrap: "wrap",
+  marginBottom: 14,
+},
 };
