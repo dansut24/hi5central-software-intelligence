@@ -4,6 +4,33 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+const KNOWN_DETECTION_RULES = {
+  "Google Chrome Enterprise": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Google\\Chrome\\BLBeacon",
+    registry_value: "version",
+  },
+  "Mozilla Firefox ESR": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Mozilla\\Mozilla Firefox ESR",
+    registry_value: "CurrentVersion",
+  },
+  "Microsoft Edge Enterprise": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Microsoft\\Edge\\BLBeacon",
+    registry_value: "version",
+  },
+  "Brave Browser": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\BraveSoftware\\Brave-Browser\\BLBeacon",
+    registry_value: "version",
+  },
+};
+
 function looksLikeInstaller(url = "") {
   const clean = String(url).toLowerCase().split("?")[0];
 
