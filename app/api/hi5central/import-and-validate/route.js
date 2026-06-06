@@ -163,9 +163,24 @@ async function upsertDetectionRule(supabase, softwareId, rule) {
     updated_at: new Date().toISOString(),
   };
 
+  let deleteQuery = supabase
+    .from("software_detection_rules")
+    .delete()
+    .eq("software_id", softwareId)
+    .eq("platform", "windows")
+    .eq("method", row.method);
+
+  if (row.registry_hive) deleteQuery = deleteQuery.eq("registry_hive", row.registry_hive);
+  if (row.registry_path) deleteQuery = deleteQuery.eq("registry_path", row.registry_path);
+  if (row.registry_value) deleteQuery = deleteQuery.eq("registry_value", row.registry_value);
+  if (row.file_path) deleteQuery = deleteQuery.eq("file_path", row.file_path);
+  if (row.version_command) deleteQuery = deleteQuery.eq("version_command", row.version_command);
+
+  await deleteQuery;
+
   const { data, error } = await supabase
     .from("software_detection_rules")
-    .upsert(row, { onConflict: "software_id,platform,rule_key" })
+    .insert(row)
     .select()
     .single();
 
