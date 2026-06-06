@@ -1,7 +1,5 @@
 "use client";
-
 import { useState } from "react";
-
 const PROVIDERS = {
   winget: {
     label: "Winget",
@@ -22,30 +20,25 @@ const PROVIDERS = {
     idField: "package_id",
   },
 };
-
 export default function AdminPage() {
   const [provider, setProvider] = useState("winget");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Imported");
+  const [adminKey, setAdminKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState("");
   const [results, setResults] = useState([]);
   const [message, setMessage] = useState("");
-
   const activeProvider = PROVIDERS[provider];
-
   async function searchSoftware() {
     setLoading(true);
     setMessage("");
-
     try {
       const res = await fetch(
         `${activeProvider.searchUrl}?q=${encodeURIComponent(query)}&limit=15`
       );
-
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
-
       setResults(json.results || []);
       setMessage(`Found ${json.count} result(s) from ${activeProvider.label}.`);
     } catch (error) {
@@ -54,39 +47,37 @@ export default function AdminPage() {
       setLoading(false);
     }
   }
-
   async function importPackage(item) {
     const packageId = item[activeProvider.idField];
-
+    if (!adminKey.trim()) {
+      setMessage("Admin key is required to import and validate software.");
+      return;
+    }
     setImporting(packageId);
     setMessage("");
-
     try {
       const body =
-  provider === "github" || provider === "chocolatey"
-    ? {
-        package_id: packageId,
-        category,
-        name: item.name,
-        vendor: item.vendor,
-      }
-    : {
-        winget_id: packageId,
-        category,
-      };
-
+        provider === "github" || provider === "chocolatey"
+          ? {
+              package_id: packageId,
+              category,
+              name: item.name,
+              vendor: item.vendor,
+            }
+          : {
+              winget_id: packageId,
+              category,
+            };
       const res = await fetch(activeProvider.importUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "x-admin-api-key": adminKey,
         },
         body: JSON.stringify(body),
       });
-
       const json = await res.json();
-
       if (!json.ok) throw new Error(json.error);
-
       setMessage(
         `Imported ${json.imported.name} ${json.imported.version} -- validation: ${json.validation.status}`
       );
@@ -96,15 +87,12 @@ export default function AdminPage() {
       setImporting("");
     }
   }
-
   function getItemId(item) {
     return item.winget_id || item.package_id;
   }
-
   function getLatest(item) {
     return item.latest_version || item.latest_seen_version || "";
   }
-
   return (
     <main style={styles.page}>
       <section style={styles.header}>
@@ -112,20 +100,18 @@ export default function AdminPage() {
           <p style={styles.eyebrow}>Hi5Central Admin</p>
           <h1 style={styles.title}>Software Import</h1>
           <p style={styles.subtitle}>
-            Search Winget or GitHub, import software, and validate installers in one click.
+            Search Winget, GitHub, or Chocolatey, then import and validate installers in one click.
           </p>
         </div>
-
         <div style={styles.actions}>
           <a style={styles.button} href="/">
             Dashboard
           </a>
-          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=100">
-            Validate installers
-          </a>
+          <span style={styles.disabledButton}>
+            Validation requires admin key
+          </span>
         </div>
       </section>
-
       <section style={styles.panel}>
         <div style={styles.searchRow}>
           <select
@@ -140,32 +126,35 @@ export default function AdminPage() {
             <option value="winget">Winget</option>
             <option value="github">GitHub</option>
             <option value="chocolatey">Chocolatey</option>
-            
           </select>
-
           <input
             style={styles.input}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={
-  provider === "github"
-    ? "Search GitHub, e.g. ventoy, rustdesk, obs"
-    : provider === "chocolatey"
-      ? "Search Chocolatey, e.g. vlc, 7zip, firefox"
-      : "Search Winget, e.g. adobe reader, chrome, wireshark"
-}
+              provider === "github"
+                ? "Search GitHub, e.g. ventoy, rustdesk, obs"
+                : provider === "chocolatey"
+                  ? "Search Chocolatey, e.g. vlc, 7zip, firefox"
+                  : "Search Winget, e.g. adobe reader, chrome, wireshark"
+            }
             onKeyDown={(event) => {
               if (event.key === "Enter") searchSoftware();
             }}
           />
-
           <input
             style={styles.category}
             value={category}
             onChange={(event) => setCategory(event.target.value)}
             placeholder="Category"
           />
-
+          <input
+            style={styles.category}
+            value={adminKey}
+            onChange={(event) => setAdminKey(event.target.value)}
+            placeholder="Admin key"
+            type="password"
+          />
           <button
             style={styles.primaryButton}
             onClick={searchSoftware}
@@ -174,10 +163,8 @@ export default function AdminPage() {
             {loading ? "Searching..." : `Search ${activeProvider.label}`}
           </button>
         </div>
-
         {message && <div style={styles.message}>{message}</div>}
       </section>
-
       <section style={styles.panel}>
         <div style={styles.panelHeader}>
           <h2 style={styles.panelTitle}>Search results</h2>
@@ -185,7 +172,6 @@ export default function AdminPage() {
             {results.length} candidates · {activeProvider.label}
           </span>
         </div>
-
         <div style={styles.tableWrap}>
           <table style={styles.table}>
             <thead>
@@ -199,11 +185,9 @@ export default function AdminPage() {
                 <th style={styles.th}>Action</th>
               </tr>
             </thead>
-
             <tbody>
               {results.map((item) => {
                 const id = getItemId(item);
-
                 return (
                   <tr key={id}>
                     <td style={styles.td}>
@@ -213,23 +197,18 @@ export default function AdminPage() {
                       )}
                       {item.error && <div style={styles.error}>{item.error}</div>}
                     </td>
-
                     <td style={styles.td}>
                       <code style={styles.code}>{id}</code>
                     </td>
-
                     <td style={styles.td}>
                       <code style={styles.code}>{getLatest(item) || "Unknown"}</code>
                     </td>
-
                     <td style={styles.td}>{item.vendor || "Unknown"}</td>
-
                     <td style={styles.td}>
                       <span style={styles.badge}>
                         {item.installer_type || "unknown"}
                       </span>
                     </td>
-
                     <td style={styles.td}>
                       <a
                         style={styles.link}
@@ -239,7 +218,6 @@ export default function AdminPage() {
                         View source
                       </a>
                     </td>
-
                     <td style={styles.td}>
                       <button
                         style={styles.importButton}
@@ -252,7 +230,6 @@ export default function AdminPage() {
                   </tr>
                 );
               })}
-
               {results.length === 0 && (
                 <tr>
                   <td style={styles.empty} colSpan={7}>
@@ -267,7 +244,6 @@ export default function AdminPage() {
     </main>
   );
 }
-
 const styles = {
   page: {
     minHeight: "100vh",
@@ -315,13 +291,12 @@ const styles = {
     border: "1px solid #d1d5db",
     fontWeight: 700,
   },
-  buttonDark: {
+  disabledButton: {
     padding: "10px 14px",
     borderRadius: 10,
-    background: "#111827",
-    color: "#ffffff",
-    textDecoration: "none",
-    border: "1px solid #111827",
+    background: "#f3f4f6",
+    color: "#6b7280",
+    border: "1px solid #d1d5db",
     fontWeight: 700,
   },
   panel: {

@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { STARTER_INSTALLERS } from "@/lib/installers";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
+  const authError = requireAdmin(request);
+  if (authError) return authError;
+
   const supabase = supabaseAdmin();
   const results = [];
 
@@ -29,12 +33,13 @@ export async function GET() {
       .upsert(
         {
           software_id: app.id,
+          provider: installer.provider || "winget",
           platform: installer.platform || "windows",
           architecture: installer.architecture || "x64",
           installer_type: installer.installer_type,
           download_url: installer.download_url,
           download_resolver: installer.download_resolver || "direct_url",
-resolver_metadata: installer.resolver_metadata || {},
+          resolver_metadata: installer.resolver_metadata || {},
           silent_install_args: installer.silent_install_args,
           silent_uninstall_args: installer.silent_uninstall_args,
           checksum: installer.checksum || null,

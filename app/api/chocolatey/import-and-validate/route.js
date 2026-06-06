@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getChocolateyPackageDetails } from "@/lib/chocolatey";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
+  const authError = requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const packageId = body.package_id;
@@ -55,6 +59,7 @@ export async function POST(request) {
       .upsert(
         {
           software_id: app.id,
+          provider: "chocolatey",
           platform: "windows",
           architecture: "x64",
           installer_type: "choco",

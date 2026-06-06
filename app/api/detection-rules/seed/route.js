@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { STARTER_DETECTION_RULES } from "@/lib/detection-rules";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request) {
+  const authError = requireAdmin(request);
+  if (authError) return authError;
+
   const supabase = supabaseAdmin();
   const results = [];
 

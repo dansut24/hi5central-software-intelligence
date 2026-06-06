@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
@@ -133,6 +134,9 @@ function getValidationStatus(check) {
 }
 
 export async function GET(request) {
+  const authError = requireAdmin(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const limit = Math.min(Number(searchParams.get("limit") || 25), 100);
 
@@ -142,6 +146,7 @@ export async function GET(request) {
     .from("software_installers")
     .select(`
       id,
+      provider,
       download_url,
       download_resolver,
       resolver_metadata,
@@ -161,6 +166,35 @@ export async function GET(request) {
 
   for (const installer of data || []) {
     try {
+      if (installer.provider === "chocolatey" || installer.download_resolver === "chocolatey") {
+        await supabase
+          .from("software_installers")
+          .update({
+            validation_status: "ready",
+            validation_message: "Chocolatey package imported; requires Chocolatey on endpoint",
+            validated_at: new Date().toISOString(),
+          })
+          .eq("id", installer.id);
+
+        results.push({
+          status: "ready",
+          provider: installer.provider || "chocolatey",
+          name: installer.software_catalogue?.name,
+          winget_id: installer.software_catalogue?.winget_id,
+          installer_type: installer.installer_type,
+          resolver: installer.download_resolver || "chocolatey",
+          downloadUrl: installer.download_url,
+          finalUrl: installer.download_url,
+          httpStatus: 200,
+          contentType: "chocolatey/package",
+          contentLength: null,
+          direct: true,
+          message: "Chocolatey package imported; requires Chocolatey on endpoint",
+        });
+
+        continue;
+      }
+
       const resolved = await resolveDownloadUrl(installer);
       const check = await validateUrl(resolved.url);
 
@@ -186,6 +220,7 @@ export async function GET(request) {
 
       results.push({
         status: validationStatus,
+        provider: installer.provider || "manual",
         name: installer.software_catalogue?.name,
         winget_id: installer.software_catalogue?.winget_id,
         installer_type: installer.installer_type,
@@ -212,6 +247,7 @@ export async function GET(request) {
 
       results.push({
         status: "broken",
+        provider: installer.provider || "manual",
         name: installer.software_catalogue?.name,
         winget_id: installer.software_catalogue?.winget_id,
         installer_type: installer.installer_type,

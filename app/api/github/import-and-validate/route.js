@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import { getGithubReleaseDetails } from "@/lib/github";
 
@@ -87,6 +88,9 @@ async function validateUrl(url) {
 }
 
 export async function POST(request) {
+  const authError = requireAdmin(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const packageId = body.package_id;
