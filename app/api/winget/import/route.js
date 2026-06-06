@@ -57,8 +57,25 @@ export async function POST(request) {
     },
     { onConflict: "software_id,version" }
   );
-  
-    const { error: installerError } = await supabase
+
+const { error: sourceError } = await supabase
+  .from("software_sources")
+  .upsert(
+    {
+      software_id: app.id,
+      source_name: "Winget",
+      source_type: "winget",
+      enabled: true,
+      metadata: {
+        winget_id: pkg.winget_id,
+        source_url: pkg.source_url,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "software_id,source_type" }
+  );
+
+const { error: installerError } = await supabase
       .from("software_installers")
       .upsert(
         {
@@ -92,9 +109,10 @@ export async function POST(request) {
         source_url: pkg.source_url,
       },
       warnings: [
-        versionError ? `Version insert failed: ${versionError.message}` : null,
-        installerError ? `Installer upsert failed: ${installerError.message}` : null,
-      ].filter(Boolean),
+  versionError ? `Version upsert failed: ${versionError.message}` : null,
+  sourceError ? `Source upsert failed: ${sourceError.message}` : null,
+  installerError ? `Installer upsert failed: ${installerError.message}` : null,
+].filter(Boolean),
     });
   } catch (error) {
     return NextResponse.json(

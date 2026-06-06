@@ -142,7 +142,25 @@ export async function POST(request) {
     { onConflict: "software_id,version" }
   );
 
-    const check = await validateUrl(pkg.download_url);
+await supabase
+  .from("software_sources")
+  .upsert(
+    {
+      software_id: app.id,
+      source_name: "GitHub",
+      source_type: "github",
+      enabled: true,
+      metadata: {
+        package_id: pkg.package_id,
+        release_url: pkg.release_url,
+        asset_name: pkg.asset_name,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "software_id,source_type" }
+  );
+
+const check = await validateUrl(pkg.download_url);
 
     const { data: installer, error: installerError } = await supabase
       .from("software_installers")

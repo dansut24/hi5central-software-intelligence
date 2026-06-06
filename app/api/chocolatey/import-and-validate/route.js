@@ -60,7 +60,25 @@ export async function POST(request) {
     { onConflict: "software_id,version" }
   );
 
-    const { data: installer, error: installerError } = await supabase
+await supabase
+  .from("software_sources")
+  .upsert(
+    {
+      software_id: app.id,
+      source_name: "Chocolatey",
+      source_type: "chocolatey",
+      enabled: true,
+      metadata: {
+        package_id: pkg.package_id,
+        release_url: pkg.release_url,
+      },
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "software_id,source_type" }
+  );
+
+const { data: installer, error: installerError } = await supabase
+
       .from("software_installers")
       .upsert(
         {
