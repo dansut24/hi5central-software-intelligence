@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+const [editing, setEditing] = useState(null);
+
 const STATUSES = ["pending", "researched", "needs_review", "imported", "failed"];
 
 export default function SoftwareResearchPage() {
@@ -62,6 +64,36 @@ export default function SoftwareResearchPage() {
     }
   }
 
+  async function saveEdit() {
+  if (!editing) return;
+
+  setLoading(true);
+  setMessage("");
+
+  try {
+    const res = await fetch("/api/software/research/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-admin-api-key": adminKey,
+      },
+      body: JSON.stringify(editing),
+    });
+
+    const json = await res.json();
+    if (!json.ok) throw new Error(json.error);
+
+    setEditing(null);
+    setMessage("Row updated. Process it again to validate the new URL.");
+    await loadRows(status);
+  } catch (error) {
+    setMessage(error.message);
+  } finally {
+    setLoading(false);
+  }
+}
+  
+  
   async function approveRow(id) {
     setLoading(true);
     setMessage("");
@@ -198,6 +230,14 @@ export default function SoftwareResearchPage() {
 
                   <td style={styles.td}>
                     {row.status === "researched" || row.status === "needs_review" ? (
+                      
+                      <button
+  style={styles.secondaryButton}
+  onClick={() => setEditing(row)}
+  disabled={loading}
+>
+  Edit
+</button>
                       <button style={styles.importButton} onClick={() => approveRow(row.id)} disabled={loading}>
                         Approve
                       </button>
@@ -223,6 +263,57 @@ export default function SoftwareResearchPage() {
           </table>
         </div>
       </section>
+      
+      {editing && (
+  <section style={styles.modalBackdrop}>
+    <div style={styles.modal}>
+      <h2 style={styles.panelTitle}>Edit research row</h2>
+
+      {[
+        ["name", "Name"],
+        ["vendor", "Vendor"],
+        ["category", "Category"],
+        ["homepage_url", "Homepage URL"],
+        ["release_url", "Release URL"],
+        ["download_url", "Direct download URL"],
+        ["installer_type", "Installer type"],
+        ["silent_install_args", "Silent install args"],
+        ["silent_uninstall_args", "Silent uninstall args"],
+        ["detection_method", "Detection method"],
+        ["detection_value", "Detection value"],
+      ].map(([field, label]) => (
+        <label key={field} style={styles.editLabel}>
+          {label}
+          <input
+            style={styles.editInput}
+            value={editing[field] || ""}
+            onChange={(event) =>
+              setEditing({
+                ...editing,
+                [field]: event.target.value,
+              })
+            }
+          />
+        </label>
+      ))}
+
+      <div style={styles.modalActions}>
+        <button style={styles.primaryButton} onClick={saveEdit} disabled={loading}>
+          Save
+        </button>
+        <button
+          style={styles.button}
+          onClick={() => setEditing(null)}
+          disabled={loading}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  </section>
+)}
+
+
     </main>
   );
 }
@@ -401,4 +492,55 @@ const styles = {
     textAlign: "center",
     color: "#6b7280",
   },
+  secondaryButton: {
+  background: "#ffffff",
+  color: "#111827",
+  padding: "8px 11px",
+  borderRadius: 8,
+  fontWeight: 900,
+  border: "1px solid #d1d5db",
+  marginRight: 8,
+},
+modalBackdrop: {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(17,24,39,0.55)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 16,
+  zIndex: 50,
+},
+modal: {
+  width: "100%",
+  maxWidth: 720,
+  maxHeight: "90vh",
+  overflowY: "auto",
+  background: "#ffffff",
+  borderRadius: 18,
+  padding: 18,
+  boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+},
+editLabel: {
+  display: "block",
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#374151",
+  marginTop: 12,
+},
+editInput: {
+  display: "block",
+  width: "100%",
+  marginTop: 6,
+  padding: "11px 12px",
+  borderRadius: 10,
+  border: "1px solid #d1d5db",
+  fontSize: 14,
+},
+modalActions: {
+  display: "flex",
+  gap: 10,
+  marginTop: 18,
+  flexWrap: "wrap",
+},
 };
