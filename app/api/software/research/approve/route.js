@@ -133,6 +133,12 @@ function normaliseRegistryPath(path = "") {
 }
 
 function buildDetectionRule(row, draft) {
+  const knownRule = KNOWN_DETECTION_RULES[draft?.name] || KNOWN_DETECTION_RULES[row.name];
+
+  if (knownRule) {
+    return knownRule;
+  }
+
   const rule = draft?.detection_rule;
 
   if (rule?.method) {
