@@ -130,11 +130,17 @@ export async function POST(request) {
       );
     }
 
-    await supabase.from("software_versions").insert({
+    await supabase
+  .from("software_versions")
+  .upsert(
+    {
       software_id: app.id,
       version: pkg.version,
-      release_url: pkg.release_url,
-    });
+      release_url: pkg.release_url || null,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "software_id,version" }
+  );
 
     const check = await validateUrl(pkg.download_url);
 

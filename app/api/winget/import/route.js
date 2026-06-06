@@ -47,13 +47,17 @@ export async function POST(request) {
     }
 
     const { error: versionError } = await supabase
-      .from("software_versions")
-      .insert({
-        software_id: app.id,
-        version: pkg.version,
-        release_url: pkg.source_url,
-      });
-
+  .from("software_versions")
+  .upsert(
+    {
+      software_id: app.id,
+      version: pkg.version,
+      release_url: pkg.source_url || null,
+      created_at: new Date().toISOString(),
+    },
+    { onConflict: "software_id,version" }
+  );
+  
     const { error: installerError } = await supabase
       .from("software_installers")
       .upsert(
