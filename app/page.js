@@ -43,6 +43,13 @@ function validationStyle(status) {
   return styles.statusPending;
 }
 
+function providerStyle(provider) {
+  if (provider === "winget") return styles.providerWinget;
+  if (provider === "github") return styles.providerGithub;
+  if (provider === "chocolatey") return styles.providerChocolatey;
+  return styles.providerManual;
+}
+
 export default async function HomePage() {
   const statusData = await getJson("/api/sources/status");
   const installerData = await getJson("/api/installers/status");
@@ -57,6 +64,10 @@ export default async function HomePage() {
   const readyInstallers = installers.filter((i) => i.validation_status === "ready").length;
   const needsResolver = installers.filter((i) => i.validation_status === "needs_resolver").length;
   const brokenInstallers = installers.filter((i) => i.validation_status === "broken").length;
+
+  const wingetCount = installers.filter((i) => i.provider === "winget").length;
+  const githubCount = installers.filter((i) => i.provider === "github").length;
+  const chocoCount = installers.filter((i) => i.provider === "chocolatey").length;
 
   const sortedApps = [...apps].sort((a, b) => {
     const ai = findInstaller(a, installers);
@@ -83,15 +94,15 @@ export default async function HomePage() {
           <p style={styles.eyebrow}>Hi5Central</p>
           <h1 style={styles.title}>Software Intelligence</h1>
           <p style={styles.subtitle}>
-            Vendor-direct versions, installer validation, and patch-readiness tracking.
+            Multi-provider software catalogue, installer validation, and patch-readiness tracking.
           </p>
         </div>
 
         <div style={styles.actions}>
+          <a style={styles.button} href="/admin">Import apps</a>
           <a style={styles.button} href="/api/sources/seed">Seed sources</a>
-          <a style={styles.button} href="/api/installers/seed">Seed installers</a>
-          <a style={styles.buttonPrimary} href="/api/sources/check?limit=25">Check versions</a>
-          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=25">
+          <a style={styles.buttonPrimary} href="/api/sources/check?limit=50">Check versions</a>
+          <a style={styles.buttonDark} href="/api/installers/validate-downloads?limit=100">
             Validate installers
           </a>
         </div>
@@ -103,6 +114,12 @@ export default async function HomePage() {
         <Card label="Ready installers" value={readyInstallers} />
         <Card label="Needs resolver" value={needsResolver} />
         <Card label="Broken" value={brokenInstallers} />
+      </section>
+
+      <section style={styles.providerCards}>
+        <ProviderCard label="Winget" value={wingetCount} style={styles.providerWinget} />
+        <ProviderCard label="GitHub" value={githubCount} style={styles.providerGithub} />
+        <ProviderCard label="Chocolatey" value={chocoCount} style={styles.providerChocolatey} />
       </section>
 
       {(needsResolver > 0 || brokenInstallers > 0) && (
@@ -127,6 +144,7 @@ export default async function HomePage() {
             <thead>
               <tr>
                 <th style={styles.th}>App</th>
+                <th style={styles.th}>Provider</th>
                 <th style={styles.th}>Latest</th>
                 <th style={styles.th}>Version Source</th>
                 <th style={styles.th}>Installer</th>
@@ -151,13 +169,23 @@ export default async function HomePage() {
                   app.homepage_url;
 
                 const validation = installer?.validation_status || "pending";
+                const provider = installer?.provider || "manual";
 
                 return (
                   <tr key={app.id}>
                     <td style={styles.td}>
                       <strong>{app.name}</strong>
-                      <div style={styles.small}>{app.vendor}</div>
+                      <div style={styles.small}>{app.vendor || "Unknown vendor"}</div>
                       <div style={styles.tiny}>{app.winget_id}</div>
+                    </td>
+
+                    <td style={styles.td}>
+                      <span style={{ ...styles.providerBadge, ...providerStyle(provider) }}>
+                        {provider}
+                      </span>
+                      {provider === "chocolatey" && (
+                        <div style={styles.warnText}>Requires Chocolatey on endpoint</div>
+                      )}
                     </td>
 
                     <td style={styles.td}>
@@ -245,6 +273,15 @@ function Card({ label, value, hint }) {
   );
 }
 
+function ProviderCard({ label, value, style }) {
+  return (
+    <div style={styles.providerCard}>
+      <span style={{ ...styles.providerBadge, ...style }}>{label.toLowerCase()}</span>
+      <strong style={styles.providerValue}>{value}</strong>
+    </div>
+  );
+}
+
 const styles = {
   page: {
     minHeight: "100vh",
@@ -296,12 +333,28 @@ const styles = {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
     gap: 14,
+    marginBottom: 14,
+  },
+  providerCards: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gap: 14,
     marginBottom: 20,
   },
   card: { background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 18 },
   cardLabel: { display: "block", color: "#6b7280", fontSize: 13, marginBottom: 8 },
   cardValue: { display: "block", fontSize: 30 },
   cardHint: { color: "#6b7280", fontSize: 12 },
+  providerCard: {
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: 16,
+    padding: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  providerValue: { fontSize: 26 },
   warning: {
     display: "flex",
     gap: 8,
@@ -330,6 +383,7 @@ const styles = {
   td: { padding: "14px 16px", borderBottom: "1px solid #f1f5f9", verticalAlign: "top", whiteSpace: "nowrap" },
   small: { color: "#6b7280", fontSize: 12, marginTop: 4 },
   tiny: { color: "#9ca3af", fontSize: 11, marginTop: 3 },
+  warnText: { color: "#92400e", fontSize: 11, marginTop: 5 },
   code: { background: "#f3f4f6", padding: "3px 6px", borderRadius: 6 },
   badge: {
     display: "inline-block",
@@ -349,6 +403,18 @@ const styles = {
     fontSize: 12,
     fontWeight: 700,
   },
+  providerBadge: {
+    display: "inline-block",
+    borderRadius: 999,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    textTransform: "uppercase",
+  },
+  providerWinget: { background: "#dbeafe", color: "#1d4ed8" },
+  providerGithub: { background: "#e5e7eb", color: "#111827" },
+  providerChocolatey: { background: "#ede9fe", color: "#5b21b6" },
+  providerManual: { background: "#f3f4f6", color: "#374151" },
   status: {
     display: "inline-block",
     borderRadius: 999,
