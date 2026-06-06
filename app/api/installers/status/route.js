@@ -10,6 +10,7 @@ export async function GET() {
     .from("software_installers")
     .select(`
       id,
+      provider,
 platform,
 architecture,
 installer_type,
