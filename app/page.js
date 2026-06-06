@@ -174,7 +174,9 @@ export default async function HomePage() {
                 return (
                   <tr key={app.id}>
                     <td style={styles.td}>
-                      <strong>{app.name}</strong>
+                      <a style={styles.appLink} href={`/software/${app.id}`}>
+  {app.name}
+</a>
                       <div style={styles.small}>{app.vendor || "Unknown vendor"}</div>
                       <div style={styles.tiny}>{app.winget_id}</div>
                     </td>
@@ -411,6 +413,11 @@ const styles = {
     fontWeight: 900,
     textTransform: "uppercase",
   },
+  appLink: {
+  color: "#111827",
+  fontWeight: 900,
+  textDecoration: "none",
+},
   providerWinget: { background: "#dbeafe", color: "#1d4ed8" },
   providerGithub: { background: "#e5e7eb", color: "#111827" },
   providerChocolatey: { background: "#ede9fe", color: "#5b21b6" },
