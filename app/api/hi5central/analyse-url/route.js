@@ -5,7 +5,15 @@ export const dynamic = "force-dynamic";
 
 const KNOWN_VENDOR_MATCHERS = [
   {
-    test: (url) => url.includes("dl.google.com/chrome/install/googlechromestandaloneenterprise64.msi"),
+    id: "google-chrome-enterprise",
+    test: (inputUrl = "") => {
+      const value = String(inputUrl).toLowerCase();
+
+      return (
+        value.includes("dl.google.com") &&
+        value.includes("googlechromestandaloneenterprise64.msi")
+      );
+    },
     draft: {
       name: "Google Chrome Enterprise",
       vendor: "Google",
@@ -22,14 +30,23 @@ const KNOWN_VENDOR_MATCHERS = [
     },
   },
   {
-    test: (url) => url.includes("go.microsoft.com/fwlink/?linkid=2093437"),
+    id: "microsoft-edge-enterprise",
+    test: (inputUrl = "") => {
+      const value = String(inputUrl).toLowerCase();
+
+      return (
+        value.includes("go.microsoft.com/fwlink") ||
+        value.includes("microsoftedgeenterprisex64.msi")
+      );
+    },
     draft: {
       name: "Microsoft Edge Enterprise",
       vendor: "Microsoft",
       winget_id: "hi5central.microsoft-edge-enterprise",
       category: "Browser",
       homepage_url: "https://www.microsoft.com/edge/business/download",
-      release_url: "https://learn.microsoft.com/deployedge/microsoft-edge-relnote-stable-channel",
+      release_url:
+        "https://learn.microsoft.com/deployedge/microsoft-edge-relnote-stable-channel",
       detection_rule: {
         method: "registry",
         registry_hive: "HKLM",
@@ -97,6 +114,7 @@ function inferVendorFromUrl(url = "") {
   try {
     const host = new URL(url).hostname.replace(/^www\./, "");
     const parts = host.split(".");
+
     return parts[0]
       .replace(/[-_]+/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -167,27 +185,48 @@ export async function POST(request) {
 
     const check = await validateUrl(url);
     const installerType = inferInstallerType(check.finalUrl, check.contentType);
-    
-    const knownMatch = KNOWN_VENDOR_MATCHERS.find((matcher) =>
-  matcher.test(url) || matcher.test(check.finalUrl || "")
-);
 
-    const name = body.name || knownMatch?.draft?.name || inferNameFromUrl(check.finalUrl || url);
-const vendor = body.vendor || knownMatch?.draft?.vendor || inferVendorFromUrl(check.finalUrl || url);
+    const knownMatch = KNOWN_VENDOR_MATCHERS.find((matcher) => {
+      return matcher.test(url) || matcher.test(check.finalUrl || "");
+    });
+
+    const name =
+      body.name ||
+      knownMatch?.draft?.name ||
+      inferNameFromUrl(check.finalUrl || url);
+
+    const vendor =
+      body.vendor ||
+      knownMatch?.draft?.vendor ||
+      inferVendorFromUrl(check.finalUrl || url);
 
     const draft = {
       name,
       vendor,
-      winget_id: body.winget_id || knownMatch?.draft?.winget_id || buildWingetStyleId(name),
-category: body.category || knownMatch?.draft?.category || "Hi5Central",
-homepage_url: body.homepage_url || knownMatch?.draft?.homepage_url || null,
-release_url: body.release_url || knownMatch?.draft?.release_url || null,
-detection_rule: body.detection_rule || knownMatch?.draft?.detection_rule || {
-        method: "file",
-        file_path: `C:\\Program Files\\${name}\\${name}.exe`,
-      },
+      winget_id:
+        body.winget_id ||
+        knownMatch?.draft?.winget_id ||
+        buildWingetStyleId(name),
+      version: body.version || "latest",
+      category: body.category || knownMatch?.draft?.category || "Hi5Central",
+      homepage_url:
+        body.homepage_url || knownMatch?.draft?.homepage_url || null,
+      release_url:
+        body.release_url || knownMatch?.draft?.release_url || null,
+      installer_type: installerType,
+      download_url: check.finalUrl || url,
+      silent_install_args:
+        body.silent_install_args || inferSilentInstallArgs(installerType),
+      silent_uninstall_args:
+        body.silent_uninstall_args || inferSilentUninstallArgs(installerType),
+      detection_rule: body.detection_rule ||
+        knownMatch?.draft?.detection_rule || {
+          method: "file",
+          file_path: `C:\\Program Files\\${name}\\${name}.exe`,
+        },
       version_source: {
-        strategy: "manual_review",
+        strategy: knownMatch ? "known_vendor_match" : "manual_review",
+        matched_vendor: knownMatch?.id || null,
         analysed_url: url,
         final_url: check.finalUrl,
       },
@@ -195,7 +234,8 @@ detection_rule: body.detection_rule || knownMatch?.draft?.detection_rule || {
 
     return NextResponse.json({
       ok: true,
-      confidence: check.direct ? 0.75 : 0.45,
+      confidence: knownMatch ? 0.95 : check.direct ? 0.75 : 0.45,
+      matched_known_vendor: knownMatch?.id || null,
       direct: check.direct,
       validation_probe: {
         status: check.status,
@@ -206,7 +246,9 @@ detection_rule: body.detection_rule || knownMatch?.draft?.detection_rule || {
       draft,
       warnings: [
         !check.direct ? "URL does not look like a direct installer." : null,
-        draft.version === "latest" ? "Version could not be detected automatically." : null,
+        draft.version === "latest"
+          ? "Version could not be detected automatically."
+          : null,
         "Review silent install/uninstall arguments before import.",
         "Review detection rule before import.",
       ].filter(Boolean),
