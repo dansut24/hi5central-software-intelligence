@@ -6,6 +6,33 @@ import { searchOfficialSoftware } from "@/lib/tavily";
 
 export const dynamic = "force-dynamic";
 
+const KNOWN_DETECTION_RULES = {
+  "Google Chrome Enterprise": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Google\\Chrome\\BLBeacon",
+    registry_value: "version",
+  },
+  "Mozilla Firefox ESR": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Mozilla\\Mozilla Firefox ESR",
+    registry_value: "CurrentVersion",
+  },
+  "Microsoft Edge Enterprise": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\Microsoft\\Edge\\BLBeacon",
+    registry_value: "version",
+  },
+  "Brave Browser": {
+    method: "registry",
+    registry_hive: "HKLM",
+    registry_path: "SOFTWARE\\BraveSoftware\\Brave-Browser\\BLBeacon",
+    registry_value: "version",
+  },
+};
+
 function looksLikeInstaller(url = "") {
   const clean = String(url).toLowerCase().split("?")[0];
 
@@ -106,6 +133,10 @@ function scoreWinget(row, candidate) {
 }
 
 function buildDetectionFromRow(row, fallbackName) {
+  if (KNOWN_DETECTION_RULES[row.name]) {
+    return KNOWN_DETECTION_RULES[row.name];
+  }
+
   if (row.detection_method && row.detection_value) {
     if (row.detection_method === "registry") {
       return {
