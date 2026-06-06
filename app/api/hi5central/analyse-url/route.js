@@ -3,6 +3,43 @@ import { requireAdmin } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
+const KNOWN_VENDOR_MATCHERS = [
+  {
+    test: (url) => url.includes("dl.google.com/chrome/install/googlechromestandaloneenterprise64.msi"),
+    draft: {
+      name: "Google Chrome Enterprise",
+      vendor: "Google",
+      winget_id: "hi5central.google-chrome-enterprise",
+      category: "Browser",
+      homepage_url: "https://chromeenterprise.google/browser/download/",
+      release_url: "https://chromereleases.googleblog.com/",
+      detection_rule: {
+        method: "registry",
+        registry_hive: "HKLM",
+        registry_path: "SOFTWARE\\Google\\Chrome\\BLBeacon",
+        registry_value: "version",
+      },
+    },
+  },
+  {
+    test: (url) => url.includes("go.microsoft.com/fwlink/?linkid=2093437"),
+    draft: {
+      name: "Microsoft Edge Enterprise",
+      vendor: "Microsoft",
+      winget_id: "hi5central.microsoft-edge-enterprise",
+      category: "Browser",
+      homepage_url: "https://www.microsoft.com/edge/business/download",
+      release_url: "https://learn.microsoft.com/deployedge/microsoft-edge-relnote-stable-channel",
+      detection_rule: {
+        method: "registry",
+        registry_hive: "HKLM",
+        registry_path: "SOFTWARE\\Microsoft\\Edge\\BLBeacon",
+        registry_value: "version",
+      },
+    },
+  },
+];
+
 function looksLikeInstaller(url = "") {
   const clean = url.toLowerCase().split("?")[0];
 
@@ -130,25 +167,22 @@ export async function POST(request) {
 
     const check = await validateUrl(url);
     const installerType = inferInstallerType(check.finalUrl, check.contentType);
+    
+    const knownMatch = KNOWN_VENDOR_MATCHERS.find((matcher) =>
+  matcher.test(url) || matcher.test(check.finalUrl || "")
+);
 
-    const name = body.name || inferNameFromUrl(check.finalUrl || url);
-    const vendor = body.vendor || inferVendorFromUrl(check.finalUrl || url);
+    const name = body.name || knownMatch?.draft?.name || inferNameFromUrl(check.finalUrl || url);
+const vendor = body.vendor || knownMatch?.draft?.vendor || inferVendorFromUrl(check.finalUrl || url);
 
     const draft = {
       name,
       vendor,
-      winget_id: body.winget_id || buildWingetStyleId(name),
-      version: body.version || "latest",
-      category: body.category || "Hi5Central",
-      homepage_url: body.homepage_url || null,
-      release_url: body.release_url || null,
-      installer_type: installerType,
-      download_url: check.finalUrl || url,
-      silent_install_args:
-        body.silent_install_args || inferSilentInstallArgs(installerType),
-      silent_uninstall_args:
-        body.silent_uninstall_args || inferSilentUninstallArgs(installerType),
-      detection_rule: body.detection_rule || {
+      winget_id: body.winget_id || knownMatch?.draft?.winget_id || buildWingetStyleId(name),
+category: body.category || knownMatch?.draft?.category || "Hi5Central",
+homepage_url: body.homepage_url || knownMatch?.draft?.homepage_url || null,
+release_url: body.release_url || knownMatch?.draft?.release_url || null,
+detection_rule: body.detection_rule || knownMatch?.draft?.detection_rule || {
         method: "file",
         file_path: `C:\\Program Files\\${name}\\${name}.exe`,
       },
