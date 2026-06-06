@@ -91,6 +91,7 @@ export async function POST(request) {
       source: "chocolatey",
       imported: {
         software_id: app.id,
+        provider: "chocolatey",
         name: app.name,
         vendor: app.vendor,
         winget_id: app.winget_id,

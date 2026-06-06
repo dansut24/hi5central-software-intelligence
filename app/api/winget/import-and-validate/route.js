@@ -137,6 +137,7 @@ export async function POST(request) {
       .upsert(
         {
           software_id: app.id,
+          provider: "winget",
           platform: "windows",
           architecture: "x64",
           installer_type: pkg.installer_type,

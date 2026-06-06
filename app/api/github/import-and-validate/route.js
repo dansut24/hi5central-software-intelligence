@@ -139,6 +139,7 @@ export async function POST(request) {
       .upsert(
         {
           software_id: app.id,
+          provider: "github",
           platform: "windows",
           architecture: "x64",
           installer_type: pkg.installer_type,
