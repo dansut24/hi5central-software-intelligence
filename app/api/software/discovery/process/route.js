@@ -5,6 +5,10 @@ import { searchWinget, getWingetPackageDetails } from "@/lib/winget";
 
 export const dynamic = "force-dynamic";
 
+function normaliseRegistryPath(path = "") {
+  return String(path).replace(/\\\\/g, "\\");
+}
+
 function looksLikeInstaller(url = "") {
   const clean = url.toLowerCase().split("?")[0];
 
@@ -142,7 +146,7 @@ function buildRegistryRuleFromDiscovery(discovery) {
   return {
     method: "registry",
     registry_hive: discovery.registry_hive,
-    registry_path: discovery.registry_path,
+    registry_path: normaliseRegistryPath(discovery.registry_path),
     registry_value: "DisplayVersion",
   };
 }
@@ -366,7 +370,7 @@ export async function POST(request) {
 
         const best = scored[0];
 
-        if (!best || best.score < 45) {
+        if (!best || best.score < 70) {
           await supabase
             .from("software_discovery_queue")
             .update({
